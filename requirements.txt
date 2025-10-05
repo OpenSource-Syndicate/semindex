@@ -1,0 +1,6 @@
+faiss-cpu==1.8.0
+transformers==4.44.2
+torch==2.4.0
+sentencepiece==0.2.0
+tqdm==4.66.5
+numpy==1.26.4
