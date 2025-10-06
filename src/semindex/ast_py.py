@@ -15,6 +15,10 @@ class Symbol:
     docstring: Optional[str]
     imports: List[str]
     bases: List[str]
+    
+    def __hash__(self):
+        # Create a hash based on immutable fields only
+        return hash((self.path, self.name, self.kind, self.start_line, self.end_line, self.signature))
 
 
 @dataclass

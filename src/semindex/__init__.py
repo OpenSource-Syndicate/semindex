@@ -5,4 +5,6 @@ __all__ = [
     "embed",
     "store",
     "search",
+    "keyword_search",
+    "hybrid_search",
 ]
