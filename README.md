@@ -1,7 +1,12 @@
-# semindex (Python-only, CPU-only)
+# semindex (Python-first, CPU-only)
 
-Advanced local semantic codebase indexer for Python using AST + embeddings.
+Advanced local semantic codebase indexer for Python (with optional Tree-sitter
+languages) using AST + embeddings.
 
+- Language-aware adapters with per-file metadata (language, namespace, symbol type)
+
+- Pluggable language adapter registry with automatic file-type discovery
+- Optional Tree-sitter powered JavaScript adapter
 - AST extraction via Python `ast`
 - Embeddings via HuggingFace Transformers (CPU)
 - Vector search via FAISS (CPU)
@@ -53,8 +58,11 @@ uv run pytest
 ## Usage
 
 ```powershell
-# Index a repo
+# Index a repo with automatic language detection
 semindex index <path-to-repo> --index-dir .semindex
+
+# Force a specific adapter by name (e.g. javascript)
+semindex index <path-to-repo> --language javascript
 
 # Index with incremental updates (only changed files)
 semindex index <path-to-repo> --index-dir .semindex --incremental
@@ -73,6 +81,7 @@ Indexing options:
 - `--chunking` choose chunking method: `symbol` (function/class-based, default) or `semantic` (CAST algorithm)
 - `--similarity-threshold` similarity threshold for semantic chunking (0.0-1.0, default 0.7)
 - `--incremental` perform incremental indexing, only processing changed files
+- `--language` select a registered adapter (`python`, `javascript`, etc.) or leave as `auto` (default) to detect per file based on extension. Auto-detection will skip files without a matching adapter.
 - `--model` override default model (`microsoft/codebert-base`). For alternative models, consider:
   - `Salesforce/codet5-base` - CodeT5 model for code understanding
   - `BAAI/bge-large-en-v1.5` - Better general-purpose model
@@ -91,6 +100,7 @@ Query options:
 - Chunking can be done per function/method/class or using semantic-aware chunking.
 - Search supports both vector-only and hybrid (vector + keyword) modes.
 - Search returns top-k symbols with scores from similarity or RRF ranking.
+- SQLite `symbols` table now tracks `language`, `namespace`, `symbol_type`, and `bases` (serialized) per entry for richer metadata.
 
 ## Roadmap
 

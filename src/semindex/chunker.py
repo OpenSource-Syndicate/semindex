@@ -2,9 +2,12 @@ import ast
 import textwrap
 from typing import List, Optional
 from dataclasses import dataclass
-from .ast_py import Symbol, Chunk, extract_text_for_symbol
-from .embed import Embedder
+
 import numpy as np
+
+from .embed import Embedder
+from .model import Chunk, Symbol
+from .ast_py import extract_text_for_symbol
 
 
 @dataclass
@@ -142,7 +145,10 @@ def build_semantic_chunks_from_symbols(
             signature=representative_symbol.signature,
             docstring=representative_symbol.docstring,
             imports=representative_symbol.imports,
-            bases=representative_symbol.bases
+            bases=representative_symbol.bases,
+            language=representative_symbol.language,
+            namespace=representative_symbol.namespace,
+            symbol_type=representative_symbol.symbol_type,
         )
         chunks.append(Chunk(symbol=new_symbol, text=sem_chunk.text))
     

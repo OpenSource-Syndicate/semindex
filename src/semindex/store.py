@@ -7,6 +7,9 @@ from typing import Iterable, List, Tuple
 import faiss
 import numpy as np
 
+from .languages import ensure_default_adapters, get_adapter, iter_all_supported_files
+
+
 DB_NAME = "semindex.db"
 FAISS_INDEX = "index.faiss"
 
@@ -20,96 +23,72 @@ def file_sha256(path: str) -> str:
 
 
 def file_sha256_from_content(content: bytes) -> str:
-    """
-    Calculate SHA256 hash from file content (bytes).
-    
-    :param content: File content as bytes
-    :return: SHA256 hash as string
-    """
+    """Calculate SHA256 hash from file content (bytes)."""
+
     h = hashlib.sha256()
     h.update(content)
     return h.hexdigest()
 
 
-def get_changed_files(repo_path: str, db_path: str) -> List[str]:
-    """
-    Get list of files that have changed since last indexing.
-    
-    :param repo_path: Repository path
-    :param db_path: Database path
-    :return: List of changed file paths
-    """
+def get_changed_files(repo_path: str, db_path: str, language: str = "auto") -> List[str]:
+    """Return files that have changed since the last indexing run."""
+
+    ensure_default_adapters()
+
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
-    
-    # Get existing file hashes from the database
-    cursor.execute("SELECT path, hash FROM files")
-    existing_hashes = {row[0]: row[1] for row in cursor.fetchall()}
-    
-    conn.close()
-    
-    changed_files = []
-    
-    # Iterate through all Python files in the repo
-    from .crawler import iter_python_files
-    for file_path in iter_python_files(repo_path):
-        # Calculate current hash of the file
+    try:
+        cursor.execute("SELECT path, hash FROM files")
+        existing_hashes = {row[0]: row[1] for row in cursor.fetchall()}
+    finally:
+        conn.close()
+
+    if language == "auto":
+        file_iter: Iterable[str] = iter_all_supported_files(repo_path)
+    else:
+        adapter = get_adapter(language)
+        file_iter = adapter.discover_files(repo_path)
+
+    changed_files: List[str] = []
+    for file_path in file_iter:
         current_hash = file_sha256(file_path)
-        
-        # Check if file exists in DB and if the hash has changed
         if file_path in existing_hashes:
             if existing_hashes[file_path] != current_hash:
                 changed_files.append(file_path)
         else:
-            # File is new, needs to be indexed
             changed_files.append(file_path)
-    
+
     return changed_files
 
 
 def get_all_files_in_db(db_path: str) -> List[str]:
-    """
-    Get all file paths stored in the database.
-    
-    :param db_path: Database path
-    :return: List of file paths
-    """
+    """Return all file paths currently tracked in the index database."""
+
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
-    
-    cursor.execute("SELECT path FROM files")
-    files = [row[0] for row in cursor.fetchall()]
-    
-    conn.close()
-    return files
+    try:
+        cursor.execute("SELECT path FROM files")
+        return [row[0] for row in cursor.fetchall()]
+    finally:
+        conn.close()
 
 
 def remove_file_from_index(db_path: str, index_path: str, file_path: str):
-    """
-    Remove all symbols associated with a file from the index.
-    
-    :param db_path: Database path
-    :param index_path: FAISS index path
-    :param file_path: Path of file to remove
-    """
+    """Remove all artifacts corresponding to a file from SQLite and FAISS."""
+
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
-    
-    # Get all symbol IDs associated with the file
+
     cursor.execute("SELECT id FROM symbols WHERE path = ?", (file_path,))
     symbol_ids = [row[0] for row in cursor.fetchall()]
-    
-    # Remove symbols from SQLite
+
     cursor.execute("DELETE FROM symbols WHERE path = ?", (file_path,))
     cursor.execute("DELETE FROM files WHERE path = ?", (file_path,))
-    
+
     conn.commit()
     conn.close()
-    
-    # Note: Removing from FAISS is more complex as it requires
-    # rebuilding the index without those vectors, which we're not doing here
-    # for simplicity. In a production system, you might want to implement
-    # a marking system or use a different FAISS index type that supports deletion.
+
+    # Removing vectors from FAISS still requires rebuilding the index; omitted here.
 
 
 def ensure_db(db_path: str):
@@ -119,7 +98,8 @@ def ensure_db(db_path: str):
         """
         CREATE TABLE IF NOT EXISTS files (
             path TEXT PRIMARY KEY,
-            hash TEXT NOT NULL
+            hash TEXT NOT NULL,
+            language TEXT
         );
         """
     )
@@ -135,7 +115,10 @@ def ensure_db(db_path: str):
             signature TEXT,
             docstring TEXT,
             imports TEXT,
-            bases TEXT
+            bases TEXT,
+            language TEXT,
+            namespace TEXT,
+            symbol_type TEXT
         );
         """
     )
@@ -148,6 +131,12 @@ def ensure_db(db_path: str):
         );
         """
     )
+
+    _ensure_column(cur, "files", "language", "ALTER TABLE files ADD COLUMN language TEXT")
+    _ensure_column(cur, "symbols", "language", "ALTER TABLE symbols ADD COLUMN language TEXT")
+    _ensure_column(cur, "symbols", "namespace", "ALTER TABLE symbols ADD COLUMN namespace TEXT")
+    _ensure_column(cur, "symbols", "symbol_type", "ALTER TABLE symbols ADD COLUMN symbol_type TEXT")
+
     con.commit()
     con.close()
 
@@ -164,22 +153,38 @@ def db_conn(db_path: str):
 
 def reset_index(index_dir: str, dim: int):
     os.makedirs(index_dir, exist_ok=True)
-    # fresh FAISS index and vectors mapping
+
     index = faiss.IndexFlatIP(dim)
     faiss.write_index(index, os.path.join(index_dir, FAISS_INDEX))
+
     with db_conn(os.path.join(index_dir, DB_NAME)) as con:
         cur = con.cursor()
         cur.execute("DELETE FROM vectors;")
         cur.execute("DELETE FROM symbols;")
-        # keep files table for incremental decisions later if needed
 
 
-def add_symbols(con: sqlite3.Connection, symbols: List[Tuple[str, str, str, int, int, str, str, str, str]]) -> List[int]:
+def add_symbols(
+    con: sqlite3.Connection,
+    symbols: List[Tuple[str, str, str, int, int, str, str, str, str, str, str, str]],
+) -> List[int]:
     cur = con.cursor()
     cur.executemany(
         """
-        INSERT INTO symbols (path, name, kind, start_line, end_line, signature, docstring, imports, bases)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO symbols (
+            path,
+            name,
+            kind,
+            start_line,
+            end_line,
+            signature,
+            docstring,
+            imports,
+            bases,
+            language,
+            namespace,
+            symbol_type
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         symbols,
     )
@@ -198,11 +203,13 @@ def search(index_path: str, con: sqlite3.Connection, query_vec: np.ndarray, top_
     index = faiss.read_index(index_path)
     if index.ntotal == 0:
         return []
+
     D, I = index.search(query_vec.astype(np.float32), top_k)
-    # map FAISS row to symbol_id in insertion order
+
     cur = con.cursor()
     rows = cur.execute("SELECT rowid, symbol_id FROM vectors ORDER BY rowid ASC;").fetchall()
     id_map = [sid for (_rowid, sid) in rows]
+
     results = []
     for score, idx in zip(D[0].tolist(), I[0].tolist()):
         if idx < 0 or idx >= len(id_map):
@@ -218,19 +225,15 @@ def search(index_path: str, con: sqlite3.Connection, query_vec: np.ndarray, top_
 
 
 def get_all_symbols_for_keyword_index(con: sqlite3.Connection) -> List[dict]:
-    """
-    Retrieve all symbols for keyword indexing.
-    
-    :param con: SQLite connection
-    :return: List of symbols as dictionaries
-    """
     cur = con.cursor()
-    cur.execute("""
-        SELECT id, path, name, kind, start_line, end_line, signature, docstring, imports, bases
+    cur.execute(
+        """
+        SELECT id, path, name, kind, start_line, end_line, signature, docstring, imports, bases, language, namespace, symbol_type
         FROM symbols
-    """)
-    
-    symbols = []
+        """
+    )
+
+    symbols: List[dict] = []
     for row in cur.fetchall():
         symbol = {
             "id": row[0],
@@ -242,26 +245,30 @@ def get_all_symbols_for_keyword_index(con: sqlite3.Connection) -> List[dict]:
             "signature": row[6],
             "docstring": row[7],
             "imports": row[8],
-            "bases": row[9]
+            "bases": row[9],
+            "language": row[10],
+            "namespace": row[11],
+            "symbol_type": row[12],
         }
         symbols.append(symbol)
-    
     return symbols
 
 
 def get_symbol_by_id(con: sqlite3.Connection, symbol_id: int):
-    """
-    Retrieve a symbol by its ID.
-    
-    :param con: SQLite connection
-    :param symbol_id: The symbol ID to retrieve
-    :return: Symbol information
-    """
     cur = con.cursor()
-    cur.execute("""
+    cur.execute(
+        """
         SELECT path, name, kind, start_line, end_line, signature
         FROM symbols
         WHERE id=?
-    """, (symbol_id,))
-    
+        """,
+        (symbol_id,),
+    )
     return cur.fetchone()
+
+
+def _ensure_column(cur: sqlite3.Cursor, table: str, column: str, ddl: str) -> None:
+    cur.execute(f"PRAGMA table_info({table})")
+    existing = {row[1] for row in cur.fetchall()}
+    if column not in existing:
+        cur.execute(ddl)

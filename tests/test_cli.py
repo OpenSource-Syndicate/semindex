@@ -1,4 +1,5 @@
 import os
+import sqlite3
 import sys
 from pathlib import Path
 
@@ -70,3 +71,25 @@ def greet(name):
     # Basic assertions: index files created
     assert (idx / "index.faiss").exists()
     assert (idx / "semindex.db").exists()
+
+    with sqlite3.connect(idx / "semindex.db") as con:
+        cur = con.cursor()
+
+        file_languages = {row[0] for row in cur.execute("SELECT language FROM files").fetchall()}
+        assert file_languages == {"python"}
+
+        symbol_row = cur.execute(
+            """
+            SELECT language, namespace, symbol_type
+            FROM symbols
+            WHERE name LIKE ?
+            ORDER BY id DESC
+            LIMIT 1
+            """,
+            ("Greeter.hello%",),
+        ).fetchone()
+        assert symbol_row is not None
+        language, namespace, symbol_type = symbol_row
+        assert language == "python"
+        assert namespace == "Greeter"
+        assert symbol_type == "method"

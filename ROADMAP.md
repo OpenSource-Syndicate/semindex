@@ -16,16 +16,16 @@ This phase focuses on implementing the hybrid search strategy and enhancing the 
 - **Week 9-12: Keyword and Graph Indexing** ✅ - Keyword search (Elasticsearch) integrated with graph database (Neo4j) planned
 - **Week 13-16: Advanced Chunking** ✅ - CAST algorithm implemented with semantic-aware chunking
 - **Week 17-20: Hybrid Search Orchestrator** ✅ - Vector and keyword search fusion with Reciprocal Rank Fusion implemented
-
+- **Week 21-22: Language Adapter Registry** ✅ - Pluggable adapter registry landed with optional JavaScript Tree-sitter adapter
 ### Phase 3: Advanced Optimization and Refinement (Weeks 21-End)
 The final phase focuses on refining the user experience, improving performance, and adding advanced features.
 
 - **Week 21-24: Incremental Updates** ✅ - Incremental updates implemented by file hash comparison
 - **Week 25-28: Documentation Generation** ❌ - Automated documentation pipeline not implemented
-- **Week 29-32: Language Injection & UI** ❌ - Only Python parsing implemented (no embedded languages), only CLI interface
+- **Week 29-32: Language Injection & UI** ⏳ - Adapter scaffolding in place with optional Tree-sitter-powered JavaScript parsing; UI remains CLI-only
 - **Week 33+: Performance Benchmarking and Fine-Tuning** ❌ - Not yet implemented
 
-## Current Roadmap Items
+## Current roadmap Items
 
 - [x] Better code embeddings (code-specific model) - Improved support for code-specific models added. Recommended models include `microsoft/codebert-base`, `Salesforce/codet5-base`, and `BAAI/bge-large-en-v1.5`
 - [x] Incremental indexing by file hash
@@ -36,6 +36,7 @@ The final phase focuses on refining the user experience, improving performance, 
 - [x] Hybrid search orchestrator
 - [x] Advanced semantic chunking (CAST algorithm)
 - [ ] Documentation generation pipeline
-- [ ] Language injection support
+- [x] Language adapter registry *(auto-registration + optional Tree-sitter JavaScript adapter)*
+- [ ] Language injection support *(richer symbol extraction TBD, UI integrations pending)*
 - [ ] Web/GUI interface
 - [ ] Performance benchmarking

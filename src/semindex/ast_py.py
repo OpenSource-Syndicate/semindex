@@ -1,30 +1,8 @@
 import ast
 import textwrap
-from dataclasses import dataclass
 from typing import List, Optional, Tuple
 
-
-@dataclass
-class Symbol:
-    path: str
-    name: str
-    kind: str  # module|class|function|method
-    start_line: int
-    end_line: int
-    signature: str
-    docstring: Optional[str]
-    imports: List[str]
-    bases: List[str]
-    
-    def __hash__(self):
-        # Create a hash based on immutable fields only
-        return hash((self.path, self.name, self.kind, self.start_line, self.end_line, self.signature))
-
-
-@dataclass
-class Chunk:
-    symbol: Symbol
-    text: str
+from .model import Symbol
 
 
 def _get_end_lineno(node: ast.AST) -> int:
@@ -42,30 +20,51 @@ def _get_end_lineno(node: ast.AST) -> int:
 
 
 def _normalize_source(source: str) -> str:
-    """Normalize indentation to avoid IndentationError when text has been partially
-    left-stripped (e.g., first line column 0 but following lines still indented).
+    """Normalize indentation to avoid ``IndentationError`` when text has been partially
+    left-stripped (e.g., first line column 0 but following lines still indented)."""
 
-    Strategy:
-    1) textwrap.dedent to remove common indent.
-    2) If some lines still share a uniform minimal leading space > 0 (because the first
-       line had 0 indent, preventing dedent), remove that minimal indent from those lines.
-    """
     s = textwrap.dedent(source)
+    had_trailing_newline = s.endswith("\n")
     lines = s.splitlines()
-    # compute minimal indent of lines that start with spaces
-    indents = [len(l) - len(l.lstrip(" ")) for l in lines if l.strip() and l.startswith(" ")]
-    if indents:
-        min_indent = min(indents)
-        if min_indent > 0:
-            new_lines = []
-            prefix = " " * min_indent
-            for l in lines:
-                if l.startswith(prefix):
-                    new_lines.append(l[min_indent:])
-                else:
-                    new_lines.append(l)
-            s = "\n".join(new_lines)
-    return s
+
+    if not lines:
+        return s
+
+    def _leading_spaces(line: str) -> int:
+        return len(line) - len(line.lstrip(" "))
+
+    non_empty = [line for line in lines if line.strip()]
+    if not non_empty:
+        return s
+
+    min_indent = min(_leading_spaces(line) for line in non_empty)
+
+    # First pass: trim uniform leading indent for all lines.
+    if min_indent > 0 and all(_leading_spaces(line) >= min_indent for line in non_empty):
+        prefix = " " * min_indent
+        lines = [line[min_indent:] if line.startswith(prefix) else line for line in lines]
+    else:
+        # Second pass: handle cases where the first line is already at column 0 but
+        # subsequent top-level lines (e.g., functions) are still indented.
+        non_empty_after_first = [line for line in lines[1:] if line.strip()]
+        if non_empty_after_first:
+            indents_after_first = [_leading_spaces(line) for line in non_empty_after_first]
+            min_after_first = min(indents_after_first)
+            has_zero_after_first = any(indent == 0 for indent in indents_after_first)
+            if min_after_first > 0 and not has_zero_after_first:
+                prefix = " " * min_after_first
+                trimmed = [lines[0]]
+                for line in lines[1:]:
+                    if line.startswith(prefix):
+                        trimmed.append(line[min_after_first:])
+                    else:
+                        trimmed.append(line)
+                lines = trimmed
+
+    result = "\n".join(lines)
+    if had_trailing_newline:
+        result += "\n"
+    return result
 
 
 def parse_python_symbols(path: str, source: str) -> Tuple[List[Symbol], List[Tuple[str, str]]]:
@@ -90,6 +89,9 @@ def parse_python_symbols(path: str, source: str) -> Tuple[List[Symbol], List[Tup
         docstring=module_doc,
         imports=[],
         bases=[],
+        language="python",
+        namespace=None,
+        symbol_type="module",
     )
     symbols.append(module_symbol)
 
@@ -132,6 +134,9 @@ def parse_python_symbols(path: str, source: str) -> Tuple[List[Symbol], List[Tup
                 docstring=doc,
                 imports=[],
                 bases=bases,
+                language="python",
+                namespace=".".join(self.scope) or None,
+                symbol_type="class",
             )
             symbols.append(sym)
             self.scope.append(node.name)
@@ -162,6 +167,9 @@ def parse_python_symbols(path: str, source: str) -> Tuple[List[Symbol], List[Tup
                 docstring=doc,
                 imports=[],
                 bases=[],
+                language="python",
+                namespace=".".join(self.scope) or None,
+                symbol_type=kind,
             )
             symbols.append(sym)
             # approximate calls from this function body

@@ -1,11 +1,23 @@
 # Changelog
-
-All notable changes to semindex will be documented in this file.
-
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
-
 ## [Unreleased]
+
+### Added
+- Added a pluggable language adapter registry in `semindex.languages` that
+  powers automatic discovery of supported file types and supports runtime
+  registration of custom adapters.
+- Introduced an optional Tree-sitter powered JavaScript adapter that is
+  registered when `tree_sitter_languages` is available, expanding
+  multi-language indexing support.
+
+### Changed
+- Incremental indexing now reuses the adapter registry so mixed-language
+  repositories are handled consistently in both fresh and incremental runs.
+
+### Fixed
+- Ensured `semindex.languages` can be imported via both
+  `semindex.languages` and `semindex.languages.__init__`, keeping
+  monkeypatch-heavy tests and downstream integrations stable when optional
+  adapters are missing.
 
 ## [0.2.0] - 2025-10-06
 

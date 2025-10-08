@@ -1,21 +1,119 @@
 import argparse
 import os
-from typing import List
+from typing import List, Sequence, Tuple
 
-from .crawler import iter_python_files, read_text
-from .ast_py import parse_python_symbols
-from .chunker import build_chunks_from_symbols
+from .ast_py import parse_python_symbols as _parse_python_symbols
+from .chunker import build_chunks_from_symbols as _build_chunks_from_symbols
+from .crawler import iter_python_files as _iter_python_files, read_text
 from .embed import Embedder
+from .languages import (
+    LanguageAdapter,
+    collect_index_targets,
+    ensure_default_adapters,
+    get_adapter,
+    get_adapter_for_path,
+)
+from .languages.base import ParseResult
+from .model import Chunk, ChunkingConfig, Symbol
 from .store import (
     DB_NAME,
     FAISS_INDEX,
+    add_vectors,
     ensure_db,
     db_conn,
     reset_index,
-    add_vectors,
     get_changed_files,
     file_sha256_from_content,
 )
+
+
+# Re-export helpers expected by tests for monkeypatching.
+iter_python_files = _iter_python_files
+parse_python_symbols = _parse_python_symbols
+build_chunks_from_symbols = _build_chunks_from_symbols
+
+
+def _default_chunks_for_symbols(source: str, symbols: List[Symbol]) -> List[Chunk]:
+    chunks = []
+    for symbol in symbols:
+        if symbol.kind in {"function", "method", "class"}:
+            start = max(symbol.start_line - 1, 0)
+            end = symbol.end_line
+            snippet = "\n".join(source.splitlines()[start:end]) or symbol.signature or symbol.name
+            chunks.append(Chunk(symbol=symbol, text=snippet))
+
+    if not chunks and symbols:
+        chunks.append(Chunk(symbol=symbols[0], text=source))
+
+    return chunks
+
+
+def _make_module_symbol(path: str, source: str, language_name: str) -> Symbol:
+    return Symbol(
+        path=path,
+        name=os.path.splitext(os.path.basename(path))[0],
+        kind="module",
+        start_line=1,
+        end_line=source.count("\n") + 1,
+        signature="",
+        docstring=None,
+        imports=[],
+        bases=[],
+        language=language_name,
+        namespace=None,
+        symbol_type="module",
+    )
+
+
+def _resolve_targets(
+    paths: Sequence[str],
+    language: str,
+) -> List[Tuple[str, LanguageAdapter, str]]:
+    """Resolve file paths to (language, adapter, path) tuples."""
+
+    ensure_default_adapters()
+
+    resolved: List[Tuple[str, "LanguageAdapter", str]] = []
+    if language != "auto":
+        adapter = get_adapter(language)
+        for path in paths:
+            resolved.append((language, adapter, path))
+        return resolved
+
+    for path in paths:
+        adapter = get_adapter_for_path(path)
+        if not adapter:
+            continue
+        resolved.append((adapter.name, adapter, path))
+    return resolved
+
+
+def _parse_and_chunk(
+    adapter_name: str,
+    adapter,
+    path: str,
+    source: str,
+    embedder: Embedder,
+    chunk_config: ChunkingConfig,
+) -> ParseResult:
+    return adapter.process_file(path, source, embedder, chunk_config)
+
+
+def _format_symbol_row(symbol: Symbol) -> Tuple[str, str, str, int, int, str, str, str, str, str, str, str]:
+    return (
+        symbol.path,
+        symbol.name,
+        symbol.kind,
+        symbol.start_line,
+        symbol.end_line,
+        symbol.signature,
+        symbol.docstring or "",
+        ",".join(symbol.imports or []),
+        ",".join(symbol.bases or []),
+        symbol.language or "",
+        symbol.namespace or "",
+        symbol.symbol_type or "",
+    )
 
 
 def cmd_index(args: argparse.Namespace):
@@ -29,94 +127,115 @@ def cmd_index(args: argparse.Namespace):
 
     embedder = Embedder(model_name=args.model)
 
-    # Check if incremental indexing is enabled
+    chunk_config = ChunkingConfig(
+        method=args.chunking,
+        similarity_threshold=args.similarity_threshold,
+    )
+
+    ensure_default_adapters()
+
+    language = getattr(args, "language", "auto")
     incremental = args.incremental
-    
-    # Determine which files to process
+
     if incremental and os.path.exists(db_path) and os.path.exists(index_path):
-        # Get list of changed files
-        files_to_process = get_changed_files(repo, db_path)
-        print(f"Found {len(files_to_process)} changed/new files for incremental indexing")
+        changed_files = get_changed_files(repo, db_path, language=language)
+        targets = _resolve_targets(changed_files, language)
+        print(f"Found {len(targets)} changed/new files for incremental indexing")
     else:
-        # Process all files (fresh index or incremental not enabled)
-        files_to_process = list(iter_python_files(repo))
-        # Reset index for fresh start
+        base_targets = collect_index_targets(repo, language)
+        targets = [(adapter.name, adapter, path) for adapter, path in base_targets]
         reset_index(index_dir, dim=embedder.model.config.hidden_size)
-        print(f"Performing fresh indexing of {len(files_to_process)} files")
+        print(f"Performing fresh indexing of {len(targets)} files")
 
-    all_symbol_rows = []
+    all_symbol_rows: List[Tuple[str, str, str, int, int, str, str, str, str, str, str, str]] = []
     all_texts: List[str] = []
-    file_hashes = []
+    file_hashes: List[Tuple[str, str, str]] = []
 
-    # Determine which chunking method to use
-    use_semantic_chunking = args.chunking == 'semantic'
-    
-    for path in files_to_process:
+    for language_name, adapter, path in targets:
         try:
             source = read_text(path)
-            current_hash = file_sha256_from_content(source.encode('utf-8'))
-            
-            symbols, _calls = parse_python_symbols(path, source)
-            
-            if use_semantic_chunking:
-                # Use semantic chunking with the embedder
-                chunks = build_semantic_chunks_from_symbols(source, symbols, embedder, 
-                                                           similarity_threshold=getattr(args, 'similarity_threshold', 0.7))
-            else:
-                # Use original symbol-based chunking
-                chunks = build_chunks_from_symbols(source, symbols)
-                
-            for ch in chunks:
-                all_symbol_rows.append(
-                    (
-                        ch.symbol.path,
-                        ch.symbol.name,
-                        ch.symbol.kind,
-                        ch.symbol.start_line,
-                        ch.symbol.end_line,
-                        ch.symbol.signature,
-                        ch.symbol.docstring or "",
-                        ",".join(ch.symbol.imports or []),
-                        ",".join(ch.symbol.bases or []),
-                    )
-                )
-                all_texts.append(ch.text)
-                
-            # Record file hash for incremental indexing
-            file_hashes.append((path, current_hash))
-        except Exception as e:
+        except Exception as exc:
             if args.verbose:
-                print(f"[WARN] Failed to process {path}: {e}")
+                print(f"[WARN] Failed to read {path}: {exc}")
+            continue
 
-    # persist symbols and vectors
+        current_hash = file_sha256_from_content(source.encode("utf-8"))
+
+        parse_failed = False
+        try:
+            result = _parse_and_chunk(
+                language_name,
+                adapter,
+                path,
+                source,
+                embedder,
+                chunk_config,
+            )
+        except Exception as exc:
+            parse_failed = True
+            if args.verbose:
+                print(f"[WARN] Failed to process {path}: {exc}")
+
+        if parse_failed:
+            symbols = [_make_module_symbol(path, source, language_name)]
+            chunks = [Chunk(symbol=symbols[0], text=source)]
+        else:
+            symbols = list(result.symbols)
+            chunks = list(result.chunks)
+
+            if not symbols:
+                symbols.append(_make_module_symbol(path, source, language_name))
+
+        if not chunks:
+            chunks = _default_chunks_for_symbols(source, symbols)
+
+        for symbol in symbols:
+            all_symbol_rows.append(_format_symbol_row(symbol))
+
+        for chunk in chunks:
+            all_texts.append(chunk.text)
+
+        file_hashes.append((path, current_hash, language_name))
+
     with db_conn(db_path) as con:
         cur = con.cursor()
-        
-        # If incremental, remove old entries for changed files before adding new ones
-        if incremental and files_to_process:
-            for file_path in files_to_process:
+
+        if incremental and targets:
+            for _language_name, _adapter, file_path in targets:
                 cur.execute("DELETE FROM symbols WHERE path = ?", (file_path,))
-        
-        # bulk insert symbols
-        cur.executemany(
-            """
-            INSERT INTO symbols (path, name, kind, start_line, end_line, signature, docstring, imports, bases)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            all_symbol_rows,
-        )
-        
-        # update file hashes in the files table
+
+        if all_symbol_rows:
+            cur.executemany(
+                """
+                INSERT INTO symbols (
+                    path,
+                    name,
+                    kind,
+                    start_line,
+                    end_line,
+                    signature,
+                    docstring,
+                    imports,
+                    bases,
+                    language,
+                    namespace,
+                    symbol_type
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                all_symbol_rows,
+            )
+
         if file_hashes:
             cur.executemany(
                 """
-                INSERT OR REPLACE INTO files (path, hash) VALUES (?, ?)
+                INSERT OR REPLACE INTO files (path, hash, language)
+                VALUES (?, ?, ?)
                 """,
-                file_hashes
+                file_hashes,
             )
-        
-        # fetch last N symbol ids in insertion order (only for new entries)
-        last_id = cur.execute("SELECT ifnull(MAX(id),0) FROM symbols;").fetchone()[0]
+
+        last_id = cur.execute("SELECT ifnull(MAX(id), 0) FROM symbols;").fetchone()[0]
         count = len(all_symbol_rows)
         first_id = last_id - count + 1 if count > 0 else 0
         symbol_ids = list(range(first_id, last_id + 1)) if count > 0 else []
@@ -125,13 +244,12 @@ def cmd_index(args: argparse.Namespace):
             vecs = embedder.encode(all_texts, batch_size=args.batch)
             add_vectors(index_path, con, symbol_ids, vecs)
 
-    # Also index in Elasticsearch for keyword search (only for changed files in incremental mode)
     try:
         from .keyword_search import KeywordSearcher
         from .store import get_all_symbols_for_keyword_index
-        
+
         keyword_searcher = KeywordSearcher(index_dir)
-        if not os.path.exists(os.path.join(index_dir, "index.faiss")) or not incremental:
+        if not os.path.exists(os.path.join(index_dir, FAISS_INDEX)) or not incremental:
             # Create index if it doesn't exist (fresh indexing)
             keyword_searcher.create_index()
         
@@ -162,7 +280,7 @@ def cmd_index(args: argparse.Namespace):
 
     print(f"Indexed {len(all_texts)} chunks from repository {repo}")
     if incremental:
-        print(f"Processed {len(files_to_process)} changed/new files")
+        print(f"Processed {len(targets)} changed/new files")
 
 
 def cmd_query(args: argparse.Namespace):
@@ -202,12 +320,28 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p_idx.add_argument("--model", default=os.environ.get("SEMINDEX_MODEL", "microsoft/codebert-base"))
     p_idx.add_argument("--batch", type=int, default=16)
     p_idx.add_argument("--verbose", action="store_true")
-    p_idx.add_argument("--chunking", choices=['symbol', 'semantic'], default='symbol',
-                       help="Chunking method to use: 'symbol' for original function/class-based, 'semantic' for semantic-aware chunking")
-    p_idx.add_argument("--similarity-threshold", type=float, default=0.7,
-                       help="Similarity threshold for semantic chunking (0.0-1.0)")
-    p_idx.add_argument("--incremental", action="store_true",
-                       help="Perform incremental indexing by only processing changed files")
+    p_idx.add_argument(
+        "--chunking",
+        choices=['symbol', 'semantic'],
+        default='symbol',
+        help="Chunking method to use: 'symbol' for original function/class-based, 'semantic' for semantic-aware chunking",
+    )
+    p_idx.add_argument(
+        "--similarity-threshold",
+        type=float,
+        default=0.7,
+        help="Similarity threshold for semantic chunking (0.0-1.0)",
+    )
+    p_idx.add_argument(
+        "--language",
+        default="auto",
+        help="Language adapter to use (default: auto-detect per file)",
+    )
+    p_idx.add_argument(
+        "--incremental",
+        action="store_true",
+        help="Perform incremental indexing by only processing changed files",
+    )
     p_idx.set_defaults(func=cmd_index)
 
     p_q = sub.add_parser("query", help="Query the semantic index")
