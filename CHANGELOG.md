@@ -1,5 +1,5 @@
 # Changelog
-## [Unreleased]
+## [0.3.0] - 2025-10-20
 
 ### Added
 - Added a pluggable language adapter registry in `semindex.languages` that
@@ -9,13 +9,14 @@
   registered when `tree_sitter_languages` is available, expanding
   multi-language indexing support.
 - External library documentation indexing (PyPI + local site-packages). Docs are parsed (HTML/Markdown), normalized, embedded, and stored in dedicated tables (`doc_packages`, `doc_pages`, `doc_vectors`) and a separate FAISS index `docs.faiss`. CLI: `--include-docs` for `index` and `query`, with `--docs-weight` to control ranking merge.
+- New public Python wrappers: `Indexer` (`semindex.indexer.Indexer`) and `Searcher` (`semindex.search.Searcher`) for programmatic indexing and querying, including hybrid search and optional docs merging.
 
 ### Changed
 - Incremental indexing now reuses the adapter registry so mixed-language
   repositories are handled consistently in both fresh and incremental runs.
 - Extended `store.py` schema and index reset logic to manage docs-specific tables and FAISS index.
 - `cli.py` updated to optionally index docs after code indexing and to merge doc results at query time.
-- `README.md` and `ROADMAP.md` updated to document docs indexing and retrieval.
+- `README.md` and `ROADMAP.md` updated to document docs indexing/retrieval and the new programmatic API.
 
 
 ## [0.2.0] - 2025-10-06

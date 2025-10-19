@@ -103,6 +103,41 @@ Query options:
 - `--include-docs` include external library docs results
 - `--docs-weight` weight (0-1) applied when merging docs vs code results (default 0.4)
 
+## Programmatic API
+
+Use `Indexer` and `Searcher` directly from Python:
+
+```python
+from semindex.indexer import Indexer
+from semindex.search import Searcher
+
+# Build or update index
+indexer = Indexer(index_dir=".semindex")  # optional: model="microsoft/codebert-base"
+indexer.index_path(
+    "src/",
+    incremental=True,
+    language="auto",
+    include_docs=False,
+    chunking="symbol",           # or "semantic"
+    similarity_threshold=0.7,
+    batch=16,
+    verbose=True,
+)
+
+# Query the index
+searcher = Searcher(index_dir=".semindex")  # optional: model="..."
+results = searcher.query(
+    "how is user auth implemented?",
+    hybrid=True,          # vector + keyword; falls back to vector-only if keyword backend unavailable
+    include_docs=False,
+    top_k=10,
+    docs_weight=0.4,
+)
+
+for score, symbol_id, (path, name, kind, start, end, sig) in results:
+    print(f"{score:.4f} | {kind} {name} @ {path}:{start}-{end}")
+```
+
 ## External Library Documentation
 
 When `--include-docs` is used during indexing and/or querying, semindex:

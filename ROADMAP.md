@@ -31,6 +31,7 @@ The final phase focuses on refining the user experience, improving performance, 
 - [x] Better code embeddings (code-specific model) - Improved support for code-specific models added. Recommended models include `microsoft/codebert-base`, `Salesforce/codet5-base`, and `BAAI/bge-large-en-v1.5`
 - [x] Incremental indexing by file hash
 - [x] External docs indexing and retrieval (PyPI/local) with merged ranking
+- [x] Public Python API wrappers (Indexer, Searcher) for programmatic indexing and querying
 - [ ] Who-calls/used-by graph exploration
 - [x] Reranking with keyword + structure signals (via Reciprocal Rank Fusion)
 - [x] Keyword search integration

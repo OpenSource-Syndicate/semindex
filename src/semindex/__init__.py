@@ -7,4 +7,5 @@ __all__ = [
     "search",
     "keyword_search",
     "hybrid_search",
+    "indexer",
 ]
