@@ -6,7 +6,9 @@ languages) using AST + embeddings.
 - Language-aware adapters with per-file metadata (language, namespace, symbol type)
 
 - Pluggable language adapter registry with automatic file-type discovery
-- Optional Tree-sitter powered JavaScript adapter
+- Optional Tree-sitter powered adapters for a total of **12 languages** when the
+  extras are installed, including `javascript`, `java`, `typescript`, `csharp`,
+  `cpp`, `c`, `go`, `php`, `shell`, `rust`, and `ruby`
 - AST extraction via Python `ast`
 - Embeddings via HuggingFace Transformers (CPU)
 - Vector search via FAISS (CPU)
@@ -37,6 +39,27 @@ pip install -e .
 
 The first run will download the model locally (one-time). Afterwards it runs fully offline.
 
+### Supported languages
+
+- **Built-in**: `python`
+- **With `pip install -e .[languages]`**: `javascript`, `java`, `typescript`,
+  `csharp`, `cpp`, `c`, `go`, `php`, `shell`, `rust`, `ruby`
+
+Semindex indexes all **12 languages** automatically when the optional extra is
+installed.
+
+### Enabling additional Tree-sitter languages
+
+Adapters for the additional languages listed above require the optional
+Tree-sitter dependencies. Install them with:
+
+```powershell
+pip install -e .[languages]
+```
+
+This pulls in `tree-sitter` and `tree-sitter-languages`, enabling automatic
+registration of the extra adapters when indexing.
+
 ## Using uv (recommended)
 
 `uv` is a fast Python package manager. If you have `uv` installed:
@@ -62,7 +85,7 @@ uv run pytest
 # Index a repo with automatic language detection
 semindex index <path-to-repo> --index-dir .semindex
 
-# Force a specific adapter by name (e.g. javascript)
+# Force a specific adapter by name (e.g. javascript, java, rust, ...)
 semindex index <path-to-repo> --language javascript
 
 # Index with incremental updates (only changed files)
@@ -88,7 +111,7 @@ Indexing options:
 - `--chunking` choose chunking method: `symbol` (function/class-based, default) or `semantic` (CAST algorithm)
 - `--similarity-threshold` similarity threshold for semantic chunking (0.0-1.0, default 0.7)
 - `--incremental` perform incremental indexing, only processing changed files
-- `--language` select a registered adapter (`python`, `javascript`, etc.) or leave as `auto` (default) to detect per file based on extension. Auto-detection will skip files without a matching adapter.
+- `--language` select a registered adapter (`python`, `javascript`, `java`, `rust`, etc.) or leave as `auto` (default) to detect per file based on extension. Auto-detection will skip files without a matching adapter.
 - `--model` override default model (`microsoft/codebert-base`). For alternative models, consider:
   - `Salesforce/codet5-base` - CodeT5 model for code understanding
   - `BAAI/bge-large-en-v1.5` - Better general-purpose model

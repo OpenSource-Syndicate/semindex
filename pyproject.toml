@@ -29,6 +29,10 @@ dev = [
     "pytest-cov>=5.0",
     "ruff>=0.6",
 ]
+languages = [
+    "tree-sitter>=0.20",
+    "tree-sitter-languages>=1.10",
+]
 
 [project.scripts]
 semindex = "semindex.cli:main"

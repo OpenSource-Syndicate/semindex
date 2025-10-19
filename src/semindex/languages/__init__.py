@@ -16,6 +16,29 @@ try:  # pragma: no cover - optional dependency probe
 except Exception:  # pragma: no cover - optional dependency missing
     JavascriptTreeSitterAdapter = None  # type: ignore[assignment]
 
+try:  # pragma: no cover - optional dependency probe
+    from tree_sitter_languages import get_parser as _get_parser  # type: ignore
+except Exception:  # pragma: no cover - optional dependency missing
+    _get_parser = None  # type: ignore[assignment]
+
+
+_TREE_SITTER_LANGUAGE_DEFINITIONS: Tuple[Tuple[str, Tuple[str, ...], str], ...] = (
+    ("java", (".java",), "java"),
+    ("typescript", (".ts",), "typescript"),
+    ("csharp", (".cs",), "c_sharp"),
+    (
+        "cpp",
+        (".cpp", ".cc", ".cxx", ".hpp", ".hh", ".hxx", ".ipp", ".ixx"),
+        "cpp",
+    ),
+    ("c", (".c", ".h"), "c"),
+    ("go", (".go",), "go"),
+    ("php", (".php", ".phtml"), "php"),
+    ("shell", (".sh", ".bash", ".ksh", ".zsh"), "bash"),
+    ("rust", (".rs",), "rust"),
+    ("ruby", (".rb",), "ruby"),
+)
+
 
 def _ensure_module_alias() -> None:
     """Ensure tests can reference ``semindex.languages.__init__`` explicitly."""
@@ -103,11 +126,13 @@ def ensure_default_adapters() -> None:
     register_adapter(PythonAdapter())
 
     if JavascriptTreeSitterAdapter is None:
+        _register_tree_sitter_language_adapters()
         return
 
     try:
         js_adapter = JavascriptTreeSitterAdapter()
     except Exception:
+        _register_tree_sitter_language_adapters()
         return
 
     try:
@@ -116,6 +141,53 @@ def ensure_default_adapters() -> None:
     except Exception:
         # If availability check fails, skip registration silently
         pass
+
+    _register_tree_sitter_language_adapters()
+
+
+def _register_tree_sitter_language_adapters() -> None:
+    """Register additional tree-sitter backed adapters when available."""
+
+    for language_name, extensions, parser_key in _TREE_SITTER_LANGUAGE_DEFINITIONS:
+        adapter = _build_tree_sitter_adapter(language_name, extensions, parser_key)
+        if adapter is None:
+            continue
+
+        try:
+            if getattr(adapter, "is_available", False) and adapter.is_available:
+                register_adapter(adapter)
+        except Exception:
+            continue
+
+
+def _build_tree_sitter_adapter(
+    language_name: str, extensions: Tuple[str, ...], parser_key: str
+) -> LanguageAdapter | None:
+    parser_factory = _make_parser_factory(parser_key)
+
+    try:
+        return TreeSitterAdapter(
+            language_name,
+            extensions,
+            parser_factory=parser_factory,  # type: ignore[arg-type]
+        )
+    except Exception:
+        return None
+
+
+def _make_parser_factory(parser_key: str):
+    if _get_parser is None:
+        return None
+
+    def _factory() -> object:
+        parser = _get_parser(parser_key)
+        if parser is None:
+            raise TreeSitterNotAvailable(
+                f"tree_sitter_languages.get_parser('{parser_key}') returned None"
+            )
+        return parser
+
+    return _factory
 
 
 __all__ = [

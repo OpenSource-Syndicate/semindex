@@ -85,3 +85,38 @@ def test_ensure_default_adapters_registers_optional_when_available(monkeypatch, 
     targets = collect_index_targets(str(tmp_path), "javascript")
     assert targets
     assert all(adapter.name == "javascript" for adapter, _path in targets)
+
+
+def test_ensure_default_adapters_registers_tree_sitter_languages(monkeypatch):
+    monkeypatch.setattr(
+        "semindex.languages.__init__._TREE_SITTER_LANGUAGE_DEFINITIONS",
+        (
+            ("java", (".java",), "java"),
+            ("rust", (".rs",), "rust"),
+        ),
+        raising=False,
+    )
+
+    def _fake_get_parser(key: str):
+        class _Parser:
+            def __init__(self, name: str) -> None:
+                self.name = name
+
+            def parse(self, source: bytes):  # pragma: no cover - unused in test
+                raise NotImplementedError
+
+        return _Parser(key)
+
+    monkeypatch.setattr(
+        "semindex.languages.__init__._get_parser",
+        lambda key: _fake_get_parser(key),
+        raising=False,
+    )
+
+    clear_adapters()
+    ensure_default_adapters()
+
+    adapters = {adapter.name: adapter for adapter in available_adapters()}
+    assert "python" in adapters
+    assert adapters["java"].file_extensions == (".java",)
+    assert adapters["rust"].file_extensions == (".rs",)

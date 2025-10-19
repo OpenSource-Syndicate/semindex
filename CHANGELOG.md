@@ -8,6 +8,10 @@
 - Introduced an optional Tree-sitter powered JavaScript adapter that is
   registered when `tree_sitter_languages` is available, expanding
   multi-language indexing support.
+- Expanded Tree-sitter backed adapters to cover `javascript`, `java`,
+  `typescript`, `csharp`, `cpp`, `c`, `go`, `php`, `shell`, `rust`, and `ruby`
+  (12 languages total with extras) and upgraded the JavaScript adapter to emit
+  class/function symbols via the Tree-sitter AST.
 - External library documentation indexing (PyPI + local site-packages). Docs are parsed (HTML/Markdown), normalized, embedded, and stored in dedicated tables (`doc_packages`, `doc_pages`, `doc_vectors`) and a separate FAISS index `docs.faiss`. CLI: `--include-docs` for `index` and `query`, with `--docs-weight` to control ranking merge.
 - New public Python wrappers: `Indexer` (`semindex.indexer.Indexer`) and `Searcher` (`semindex.search.Searcher`) for programmatic indexing and querying, including hybrid search and optional docs merging.
 
