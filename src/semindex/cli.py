@@ -25,6 +25,7 @@ from .store import (
     get_changed_files,
     file_sha256_from_content,
 )
+from .store import DOCS_FAISS_INDEX
 
 
 # Re-export helpers expected by tests for monkeypatching.
@@ -282,6 +283,14 @@ def cmd_index(args: argparse.Namespace):
     if incremental:
         print(f"Processed {len(targets)} changed/new files")
 
+    # Optionally index external docs
+    if getattr(args, 'include_docs', False):
+        try:
+            from .docs_indexer import index_docs
+            index_docs(index_dir=index_dir, repo_root=repo, embedder=embedder, verbose=args.verbose)
+        except Exception as e:
+            print(f"[WARN] Docs indexing failed: {e}")
+
 
 def cmd_query(args: argparse.Namespace):
     index_dir = os.path.abspath(args.index_dir)
@@ -300,14 +309,45 @@ def cmd_query(args: argparse.Namespace):
     else:
         from .search import search_similar
         results = search_similar(index_dir, qvec, top_k=args.top_k)
+
+    # Optionally include docs search and merge
+    doc_results = []
+    if getattr(args, 'include_docs', False):
+        try:
+            from .doc_search import search_docs
+            doc_results = search_docs(index_dir, qvec, top_k=args.top_k)
+        except Exception as e:
+            print(f"[WARN] Doc search failed: {e}")
+
+    merged = []
+    if doc_results:
+        docs_weight = getattr(args, 'docs_weight', 0.4)
+        # Normalize and merge
+        code_scores = [r[0] for r in results] or [1.0]
+        doc_scores = [r[0] for r in doc_results] or [1.0]
+        max_code = max(code_scores) if code_scores else 1.0
+        max_doc = max(doc_scores) if doc_scores else 1.0
+        for r in results:
+            merged.append(((1.0 - docs_weight) * (r[0] / (max_code or 1.0)), ('code', r)))
+        for r in doc_results:
+            merged.append((docs_weight * (r[0] / (max_doc or 1.0)), ('doc', r)))
+        merged.sort(key=lambda x: x[0], reverse=True)
+        merged = merged[:args.top_k]
+    else:
+        merged = [(r[0], ('code', r)) for r in results]
     
-    if not results:
+    if not merged:
         print("No results.")
         return
-    for score, sid, (path, name, kind, start, end, sig) in results:
-        print(f"score={score:.4f} | {kind} {name} @ {path}:{start}-{end}")
-        if sig:
-            print(f"  sig: {sig}")
+    for _score, (rtype, r) in merged:
+        if rtype == 'code':
+            score, sid, (path, name, kind, start, end, sig) = r
+            print(f"code score={score:.4f} | {kind} {name} @ {path}:{start}-{end}")
+            if sig:
+                print(f"  sig: {sig}")
+        else:
+            score, pid, (package, version, url, title) = r
+            print(f"doc  score={score:.4f} | {package} :: {title} -> {url}")
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
@@ -320,6 +360,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p_idx.add_argument("--model", default=os.environ.get("SEMINDEX_MODEL", "microsoft/codebert-base"))
     p_idx.add_argument("--batch", type=int, default=16)
     p_idx.add_argument("--verbose", action="store_true")
+    p_idx.add_argument("--include-docs", action="store_true", help="Also index external library docs")
     p_idx.add_argument(
         "--chunking",
         choices=['symbol', 'semantic'],
@@ -350,6 +391,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p_q.add_argument("--model", default=os.environ.get("SEMINDEX_MODEL", "microsoft/codebert-base"))
     p_q.add_argument("--top-k", type=int, default=10)
     p_q.add_argument("--hybrid", action="store_true", help="Use hybrid search (combines vector and keyword search)")
+    p_q.add_argument("--include-docs", action="store_true", help="Include external docs in retrieval")
+    p_q.add_argument("--docs-weight", type=float, default=0.4, help="Relative weight for docs vs code results (0-1)")
     p_q.set_defaults(func=cmd_query)
 
     return p

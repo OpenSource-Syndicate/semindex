@@ -12,6 +12,7 @@ from .languages import ensure_default_adapters, get_adapter, iter_all_supported_
 
 DB_NAME = "semindex.db"
 FAISS_INDEX = "index.faiss"
+DOCS_FAISS_INDEX = "docs.faiss"
 
 
 def file_sha256(path: str) -> str:
@@ -137,6 +138,39 @@ def ensure_db(db_path: str):
     _ensure_column(cur, "symbols", "namespace", "ALTER TABLE symbols ADD COLUMN namespace TEXT")
     _ensure_column(cur, "symbols", "symbol_type", "ALTER TABLE symbols ADD COLUMN symbol_type TEXT")
 
+    # Documentation tables
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS doc_packages (
+            name TEXT,
+            version TEXT,
+            PRIMARY KEY (name, version)
+        );
+        """
+    )
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS doc_pages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            package TEXT,
+            version TEXT,
+            url TEXT,
+            title TEXT,
+            checksum TEXT,
+            last_indexed TIMESTAMP
+        );
+        """
+    )
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS doc_vectors (
+            rowid INTEGER PRIMARY KEY AUTOINCREMENT,
+            page_id INTEGER NOT NULL,
+            FOREIGN KEY(page_id) REFERENCES doc_pages(id)
+        );
+        """
+    )
+
     con.commit()
     con.close()
 
@@ -161,6 +195,14 @@ def reset_index(index_dir: str, dim: int):
         cur = con.cursor()
         cur.execute("DELETE FROM vectors;")
         cur.execute("DELETE FROM symbols;")
+
+    # Also reset docs index
+    faiss.write_index(faiss.IndexFlatIP(dim), os.path.join(index_dir, DOCS_FAISS_INDEX))
+    with db_conn(os.path.join(index_dir, DB_NAME)) as con:
+        cur = con.cursor()
+        cur.execute("DELETE FROM doc_vectors;")
+        cur.execute("DELETE FROM doc_pages;")
+        cur.execute("DELETE FROM doc_packages;")
 
 
 def add_symbols(
@@ -199,6 +241,14 @@ def add_vectors(index_path: str, con: sqlite3.Connection, symbol_ids: List[int],
     cur.executemany("INSERT INTO vectors (symbol_id) VALUES (?);", [(sid,) for sid in symbol_ids])
 
 
+def add_doc_vectors(index_path: str, con: sqlite3.Connection, page_ids: List[int], vectors: np.ndarray):
+    index = faiss.read_index(index_path)
+    index.add(vectors.astype(np.float32))
+    faiss.write_index(index, index_path)
+    cur = con.cursor()
+    cur.executemany("INSERT INTO doc_vectors (page_id) VALUES (?);", [(pid,) for pid in page_ids])
+
+
 def search(index_path: str, con: sqlite3.Connection, query_vec: np.ndarray, top_k: int = 10):
     index = faiss.read_index(index_path)
     if index.ntotal == 0:
@@ -221,6 +271,31 @@ def search(index_path: str, con: sqlite3.Connection, query_vec: np.ndarray, top_
         ).fetchone()
         if sym:
             results.append((score, sid, sym))
+    return results
+
+
+def search_docs(index_path: str, con: sqlite3.Connection, query_vec: np.ndarray, top_k: int = 10):
+    index = faiss.read_index(index_path)
+    if index.ntotal == 0:
+        return []
+
+    D, I = index.search(query_vec.astype(np.float32), top_k)
+
+    cur = con.cursor()
+    rows = cur.execute("SELECT rowid, page_id FROM doc_vectors ORDER BY rowid ASC;").fetchall()
+    id_map = [pid for (_rowid, pid) in rows]
+
+    results = []
+    for score, idx in zip(D[0].tolist(), I[0].tolist()):
+        if idx < 0 or idx >= len(id_map):
+            continue
+        pid = id_map[idx]
+        page = cur.execute(
+            "SELECT package, version, url, title FROM doc_pages WHERE id=?;",
+            (pid,),
+        ).fetchone()
+        if page:
+            results.append((score, pid, page))
     return results
 
 
@@ -263,6 +338,19 @@ def get_symbol_by_id(con: sqlite3.Connection, symbol_id: int):
         WHERE id=?
         """,
         (symbol_id,),
+    )
+    return cur.fetchone()
+
+
+def get_doc_page_by_id(con: sqlite3.Connection, page_id: int):
+    cur = con.cursor()
+    cur.execute(
+        """
+        SELECT package, version, url, title
+        FROM doc_pages
+        WHERE id=?
+        """,
+        (page_id,),
     )
     return cur.fetchone()
 

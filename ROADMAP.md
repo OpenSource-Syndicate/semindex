@@ -16,6 +16,7 @@ This phase focuses on implementing the hybrid search strategy and enhancing the 
 - **Week 9-12: Keyword and Graph Indexing** ✅ - Keyword search (Elasticsearch) integrated with graph database (Neo4j) planned
 - **Week 13-16: Advanced Chunking** ✅ - CAST algorithm implemented with semantic-aware chunking
 - **Week 17-20: Hybrid Search Orchestrator** ✅ - Vector and keyword search fusion with Reciprocal Rank Fusion implemented
+- **Week 21-22: External Library Docs Indexing** ✅ - New docs ingestion pipeline landed (PyPI + local site-packages), stored in dedicated FAISS/SQLite and merged at query time
 - **Week 21-22: Language Adapter Registry** ✅ - Pluggable adapter registry landed with optional JavaScript Tree-sitter adapter
 ### Phase 3: Advanced Optimization and Refinement (Weeks 21-End)
 The final phase focuses on refining the user experience, improving performance, and adding advanced features.
@@ -29,6 +30,7 @@ The final phase focuses on refining the user experience, improving performance, 
 
 - [x] Better code embeddings (code-specific model) - Improved support for code-specific models added. Recommended models include `microsoft/codebert-base`, `Salesforce/codet5-base`, and `BAAI/bge-large-en-v1.5`
 - [x] Incremental indexing by file hash
+- [x] External docs indexing and retrieval (PyPI/local) with merged ranking
 - [ ] Who-calls/used-by graph exploration
 - [x] Reranking with keyword + structure signals (via Reciprocal Rank Fusion)
 - [x] Keyword search integration

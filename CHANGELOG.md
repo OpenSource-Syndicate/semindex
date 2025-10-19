@@ -8,16 +8,15 @@
 - Introduced an optional Tree-sitter powered JavaScript adapter that is
   registered when `tree_sitter_languages` is available, expanding
   multi-language indexing support.
+- External library documentation indexing (PyPI + local site-packages). Docs are parsed (HTML/Markdown), normalized, embedded, and stored in dedicated tables (`doc_packages`, `doc_pages`, `doc_vectors`) and a separate FAISS index `docs.faiss`. CLI: `--include-docs` for `index` and `query`, with `--docs-weight` to control ranking merge.
 
 ### Changed
 - Incremental indexing now reuses the adapter registry so mixed-language
   repositories are handled consistently in both fresh and incremental runs.
+- Extended `store.py` schema and index reset logic to manage docs-specific tables and FAISS index.
+- `cli.py` updated to optionally index docs after code indexing and to merge doc results at query time.
+- `README.md` and `ROADMAP.md` updated to document docs indexing and retrieval.
 
-### Fixed
-- Ensured `semindex.languages` can be imported via both
-  `semindex.languages` and `semindex.languages.__init__`, keeping
-  monkeypatch-heavy tests and downstream integrations stable when optional
-  adapters are missing.
 
 ## [0.2.0] - 2025-10-06
 
