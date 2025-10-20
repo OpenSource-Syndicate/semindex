@@ -76,16 +76,14 @@ def _query_index(db_path: str, query: str) -> List[Tuple]:
 
 
 def _discover_key_modules(db_path: str, limit: int = 5) -> List[str]:
-    """Discover key modules by symbol count."""
-    query = """
-    SELECT path, COUNT(*) as count
+    """Discover key modules by file count."""
+    query = f"""
+    SELECT DISTINCT path
     FROM symbols
-    WHERE kind = 'module' OR symbol_type = 'module'
-    GROUP BY path
-    ORDER BY count DESC
-    LIMIT ?
+    ORDER BY path
+    LIMIT {limit}
     """
-    results = _query_index(db_path, f"SELECT path FROM symbols WHERE kind = 'module' OR symbol_type = 'module' LIMIT {limit}")
+    results = _query_index(db_path, query)
     return [row[0] for row in results]
 
 
@@ -95,7 +93,7 @@ def _discover_key_classes(db_path: str, limit: int = 10) -> List[Tuple[str, str]
     SELECT name, path
     FROM symbols
     WHERE kind = 'class'
-    ORDER BY (SELECT COUNT(*) FROM symbols s2 WHERE s2.namespace = symbols.name) DESC
+    ORDER BY name
     LIMIT {limit}
     """
     results = _query_index(db_path, query)
@@ -103,12 +101,12 @@ def _discover_key_classes(db_path: str, limit: int = 10) -> List[Tuple[str, str]
 
 
 def _discover_key_functions(db_path: str, limit: int = 10) -> List[Tuple[str, str]]:
-    """Discover key functions by their usage (callers/callees)."""
+    """Discover key functions by their presence."""
     query = f"""
-    SELECT s.name, s.path
-    FROM symbols s
-    WHERE s.kind = 'function'
-    ORDER BY (SELECT COUNT(*) FROM calls WHERE caller_id = s.id OR callee_symbol_id = s.id) DESC
+    SELECT name, path
+    FROM symbols
+    WHERE kind = 'function'
+    ORDER BY name
     LIMIT {limit}
     """
     results = _query_index(db_path, query)
