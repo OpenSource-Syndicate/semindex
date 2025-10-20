@@ -278,6 +278,7 @@ def run(argv: Optional[Sequence[str]] = None) -> int:
             graphs=graphs,
             stats=stats,
             max_sections=args.max_sections,
+            index_dir=str(index_dir),  # Pass index_dir to enable index-discovered sections
         )
         available_specs = [
             SectionSpec(
