@@ -74,14 +74,30 @@ SECTION_SPECS: Sequence[SectionSpec] = (
 )
 
 
+def _get_unified_template() -> str:
+    """Return a unified template that works for all section types."""
+    return """# {title}
+
+## Overview
+This section covers {section_name} aspects of the project.
+
+## Details
+{details}
+
+## Context
+```json
+{context_json}
+```
+"""
+
+
 def _load_template(repo_root: Path, template_name: str) -> str:
+    """Load template from file, or use unified template as fallback."""
     template_path = repo_root / "wiki" / "templates" / template_name
-    if not template_path.exists():
-        raise FileNotFoundError(
-            f"Template '{template_name}' missing at {template_path}."\
-            " Create the template or adjust scripts/gen_docs.py."
-        )
-    return template_path.read_text(encoding="utf-8")
+    if template_path.exists():
+        return template_path.read_text(encoding="utf-8")
+    # Return unified template as fallback
+    return _get_unified_template()
 
 
 def _hash_payload(payload: Dict[str, object]) -> str:
@@ -123,9 +139,31 @@ def _gather_graphs(repo_root: Path, index_dir: Path) -> Dict[str, MermaidGraph]:
     return graphs
 
 
-def _compose_prompt(template: str, context: Dict[str, object]) -> str:
+def _compose_prompt(template: str, context: Dict[str, object], spec_name: str = "", spec_title: str = "") -> str:
+    """Compose a prompt by filling in template variables.
+    
+    Supports both:
+    - Old style: {{context}} placeholder replacement
+    - New style: {title}, {section_name}, {details}, {context_json} f-string formatting
+    """
     context_json = json.dumps(context, indent=2, ensure_ascii=False)
-    return template.replace("{{context}}", context_json)
+    
+    # Try old-style replacement first
+    if "{{context}}" in template:
+        return template.replace("{{context}}", context_json)
+    
+    # Use new-style f-string formatting
+    details = context.get("description", "No details available.")
+    try:
+        return template.format(
+            title=spec_title or context.get("title", "Section"),
+            section_name=spec_name or "project",
+            details=details,
+            context_json=context_json,
+        )
+    except KeyError:
+        # If template has unexpected placeholders, return as-is
+        return template
 
 
 def _generate_content(
@@ -328,7 +366,7 @@ def run(argv: Optional[Sequence[str]] = None) -> int:
     for spec in selected_sections:
         context = _build_context(repo_root, spec, graphs, stats)
         template_text = _load_template(repo_root, spec.template)
-        user_prompt = _compose_prompt(template_text, context)
+        user_prompt = _compose_prompt(template_text, context, spec_name=spec.name, spec_title=spec.title)
         payload_hash = _hash_payload({
             "template": template_text,
             "context": context,
