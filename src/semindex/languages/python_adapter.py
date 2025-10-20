@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-from typing import List
+from typing import TYPE_CHECKING, List
 
 from ..ast_py import parse_python_symbols
-from ..chunker import build_chunks_from_symbols, build_semantic_chunks_from_symbols
-from ..embed import Embedder
 from ..model import Chunk, ChunkingConfig, Symbol
 from .base import LanguageAdapter, ParseResult
+
+if TYPE_CHECKING:  # pragma: no cover - type checking only
+    from ..embed import Embedder
 
 
 class PythonAdapter(LanguageAdapter):
@@ -17,9 +18,11 @@ class PythonAdapter(LanguageAdapter):
         self,
         path: str,
         source: str,
-        embedder: Embedder,
+        embedder: "Embedder",
         chunk_config: ChunkingConfig,
     ) -> ParseResult:
+        from ..chunker import build_chunks_from_symbols, build_semantic_chunks_from_symbols
+
         symbols, calls = parse_python_symbols(path, source)
 
         if chunk_config.method == "semantic":

@@ -15,6 +15,7 @@ languages) using AST + embeddings.
 - Keyword search via Elasticsearch
 - Hybrid search with Reciprocal Rank Fusion
 - Advanced semantic-aware chunking with CAST algorithm
+- Automated technical documentation generator with local or remote LLM backends
 - Incremental indexing by file hash
 - Metadata/XRef via SQLite (basic)
 - External library documentation indexing (PyPI/local site-packages) stored in a separate FAISS + SQLite space and merged at query time
@@ -37,7 +38,7 @@ pip install -r requirements.txt
 pip install -e .
 ```
 
-The first run will download the model locally (one-time). Afterwards it runs fully offline.
+The first run will download the local semantic model (one-time). Afterwards it runs fully offline.
 
 ### Supported languages
 
@@ -77,6 +78,12 @@ uv pip install -e .[dev]
 
 # Run tests
 uv run pytest
+```
+
+To install the optional language adapters when using `uv`, add the `languages` dependency group:
+
+```powershell
+uv pip install -e .[languages]
 ```
 
 ## Usage
@@ -125,6 +132,32 @@ Query options:
 - `--top-k` number of results to return (default 10)
 - `--include-docs` include external library docs results
 - `--docs-weight` weight (0-1) applied when merging docs vs code results (default 0.4)
+
+## Documentation generation (`scripts/gen_docs.py`)
+
+`scripts/gen_docs.py` produces Markdown documentation in `wiki/` using repository statistics, Mermaid graphs, and an LLM-backed writer. Key capabilities provided by `semindex.docs`:
+
+- **Auto planner**: `generate_plan()` selects sections such as overview, architecture, indexing, and language coverage based on indexed data.
+- **Graph builders**: `build_pipeline_graph()`, `build_module_graph()`, and `build_adapter_graph()` emit diagrams stored alongside generated docs.
+- **LLM flexibility**: `LocalLLM` auto-downloads a TinyLlama GGUF model (override with `SEMINDEX_LLM_PATH`) while `OpenAICompatibleLLM` supports Groq/OpenAI-compatible endpoints via `SEMINDEX_REMOTE_API_KEY`, `SEMINDEX_REMOTE_API_BASE`, and `SEMINDEX_REMOTE_MODEL`.
+
+### Running with a local model
+
+```powershell
+python scripts/gen_docs.py --repo-root . --no-llm  # deterministic fallback content
+python scripts/gen_docs.py --repo-root . --force   # use local GGUF via llama-cpp-python
+```
+
+The first invocation downloads the TinyLlama GGUF archive to `.semindex/models/` if it is absent and `SEMINDEX_LLM_AUTO_DOWNLOAD` is not disabled. Install `llama-cpp-python` (CPU build is sufficient) to enable local generation.
+
+### Enabling remote Groq/OpenAI-compatible LLMs
+
+```powershell
+$env:SEMINDEX_REMOTE_API_KEY = "<your-key>"
+python scripts/gen_docs.py --repo-root . --remote-llm
+```
+
+You can override the base URL or model via `--remote-api-base` and `--remote-model`. When `--auto-plan` is passed, generated sections are recorded in `wiki/_auto_plan.json` and limited with `--max-sections`.
 
 ## Programmatic API
 

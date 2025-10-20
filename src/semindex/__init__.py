@@ -8,4 +8,6 @@ __all__ = [
     "keyword_search",
     "hybrid_search",
     "indexer",
+    "local_llm",
+    "remote_llm",
 ]

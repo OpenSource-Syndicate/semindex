@@ -14,13 +14,19 @@
   class/function symbols via the Tree-sitter AST.
 - External library documentation indexing (PyPI + local site-packages). Docs are parsed (HTML/Markdown), normalized, embedded, and stored in dedicated tables (`doc_packages`, `doc_pages`, `doc_vectors`) and a separate FAISS index `docs.faiss`. CLI: `--include-docs` for `index` and `query`, with `--docs-weight` to control ranking merge.
 - New public Python wrappers: `Indexer` (`semindex.indexer.Indexer`) and `Searcher` (`semindex.search.Searcher`) for programmatic indexing and querying, including hybrid search and optional docs merging.
+- New `semindex.docs` package exposing `generate_plan()`, graph builders, and Mermaid utilities to power automated documentation.
+- Added `scripts/gen_docs.py` CLI for generating wiki documentation from graphs, repo statistics, and LLM-authored narratives.
+- Implemented `LocalLLM` with automatic TinyLlama GGUF download (configurable via `SEMINDEX_LLM_*` env vars) for offline documentation generation.
+- Added `remote_llm.py` with `OpenAICompatibleLLM` + `resolve_groq_config()` to integrate Groq/OpenAI-compatible endpoints, and surfaced `--remote-llm` CLI options in `gen_docs.py`.
+- Added automated planner tests in `tests/test_autoplan.py` and CLI coverage in `tests/test_gen_docs_cli.py`.
 
 ### Changed
 - Incremental indexing now reuses the adapter registry so mixed-language
   repositories are handled consistently in both fresh and incremental runs.
 - Extended `store.py` schema and index reset logic to manage docs-specific tables and FAISS index.
 - `cli.py` updated to optionally index docs after code indexing and to merge doc results at query time.
-- `README.md` and `ROADMAP.md` updated to document docs indexing/retrieval and the new programmatic API.
+- `README.md` and `ROADMAP.md` updated with the documentation generator workflow, LLM configuration, and dependency-group guidance.
+- `pyproject.toml` now credits OpenSource Syndicate as the author and introduces a `languages` dependency group for uv-based installs.
 
 
 ## [0.2.0] - 2025-10-06

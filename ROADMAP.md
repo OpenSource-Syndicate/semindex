@@ -21,7 +21,7 @@ The goal of this phase is to establish a working prototype that can parse a code
 The final phase focuses on refining the user experience, improving performance, and adding advanced features.
 
 - **Week 21-24: Incremental Updates** ✅ - Incremental updates implemented by file hash comparison
-- **Week 25-28: Documentation Generation** ❌ - Automated documentation pipeline not implemented
+- **Week 25-28: Documentation Generation** ✅ - `scripts/gen_docs.py` now generates wiki sections with auto-planned coverage, Mermaid diagrams, and LLM-authored narratives
 - **Week 33+: Performance Benchmarking and Fine-Tuning** ❌ - Not yet implemented
 
 ## Current roadmap Items
@@ -36,7 +36,7 @@ The final phase focuses on refining the user experience, improving performance, 
 - [x] Graph search integration
 - [x] Hybrid search orchestrator
 - [x] Advanced semantic chunking (CAST algorithm)
-- [ ] Documentation generation pipeline
+- [x] Documentation generation pipeline (LLM-backed auto planning + Mermaid exports)
 - [x] Language adapter registry *(auto-registration + optional Tree-sitter JavaScript adapter)*
 - [ ] Language injection support *(extended symbol extraction for remaining languages, UI integrations pending)*
 - [ ] Web/GUI interface
