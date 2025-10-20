@@ -1,5 +1,7 @@
 import argparse
+import json
 import os
+import sqlite3
 from typing import List, Sequence, Tuple
 
 from .ast_py import parse_python_symbols as _parse_python_symbols
@@ -24,8 +26,16 @@ from .store import (
     reset_index,
     get_changed_files,
     file_sha256_from_content,
+    get_callers,
+    get_callees,
 )
 from .store import DOCS_FAISS_INDEX
+from .docs.graph_builder import (
+    build_module_graph,
+    build_adapter_graph,
+    build_pipeline_graph,
+    build_repo_statistics,
+)
 
 
 # Re-export helpers expected by tests for monkeypatching.
@@ -293,80 +303,154 @@ def cmd_index(args: argparse.Namespace):
 
 
 def cmd_query(args: argparse.Namespace):
+    """Query the semantic index."""
+    from .search import search_similar
+    
     index_dir = os.path.abspath(args.index_dir)
+    
     embedder = Embedder(model_name=args.model)
     qvec = embedder.encode([args.query])
     
-    # Check if hybrid search is requested
-    if args.hybrid:
-        try:
-            from .hybrid_search import hybrid_search
-            results = hybrid_search(index_dir, qvec, args.query, top_k=args.top_k)
-        except ImportError:
-            print("[WARN] Hybrid search module not available, falling back to vector search")
-            from .search import search_similar
+    # Perform search
+    try:
+        if args.hybrid:
+            from .hybrid_search import hybrid_search as _hybrid_search
+            results = _hybrid_search(index_dir, qvec, args.query, top_k=args.top_k)
+        else:
             results = search_similar(index_dir, qvec, top_k=args.top_k)
-    else:
-        from .search import search_similar
-        results = search_similar(index_dir, qvec, top_k=args.top_k)
-
-    # Optionally include docs search and merge
-    doc_results = []
-    if getattr(args, 'include_docs', False):
+    except Exception as e:
+        print(f"Search failed: {e}")
+        return
+    
+    # Handle docs retrieval if requested
+    if args.include_docs:
         try:
             from .doc_search import search_docs
             doc_results = search_docs(index_dir, qvec, top_k=args.top_k)
-        except Exception as e:
-            print(f"[WARN] Doc search failed: {e}")
-
-    merged = []
-    if doc_results:
-        docs_weight = getattr(args, 'docs_weight', 0.4)
-        # Normalize and merge
-        code_scores = [r[0] for r in results] or [1.0]
-        doc_scores = [r[0] for r in doc_results] or [1.0]
-        max_code = max(code_scores) if code_scores else 1.0
-        max_doc = max(doc_scores) if doc_scores else 1.0
-        for r in results:
-            merged.append(((1.0 - docs_weight) * (r[0] / (max_code or 1.0)), ('code', r)))
-        for r in doc_results:
-            merged.append((docs_weight * (r[0] / (max_doc or 1.0)), ('doc', r)))
-        merged.sort(key=lambda x: x[0], reverse=True)
-        merged = merged[:args.top_k]
-    else:
-        merged = [(r[0], ('code', r)) for r in results]
+        except Exception:
+            doc_results = []
+        
+        if doc_results:
+            # Merge code + docs with weighted normalization
+            merged = []
+            code_scores = [r[0] for r in results] or [1.0]
+            doc_scores = [r[0] for r in doc_results] or [1.0]
+            max_code = max(code_scores) if code_scores else 1.0
+            max_doc = max(doc_scores) if doc_scores else 1.0
+            for r in results:
+                merged.append(((1.0 - args.docs_weight) * (r[0] / (max_code or 1.0)), ("code", r)))
+            for r in doc_results:
+                merged.append((args.docs_weight * (r[0] / (max_doc or 1.0)), ("doc", r)))
+            merged.sort(key=lambda x: x[0], reverse=True)
+            merged = merged[:args.top_k]
+            results = [r for _score, (_rtype, r) in merged]
     
-    if not merged:
-        print("No results.")
+    if not results:
+        print("No results found.")
         return
-    for _score, (rtype, r) in merged:
-        if rtype == 'code':
-            score, sid, (path, name, kind, start, end, sig) = r
-            print(f"code score={score:.4f} | {kind} {name} @ {path}:{start}-{end}")
-            if sig:
-                print(f"  sig: {sig}")
-        else:
-            score, pid, (package, version, url, title) = r
-            print(f"doc  score={score:.4f} | {package} :: {title} -> {url}")
+    
+    print(f"Found {len(results)} results for query: '{args.query}'")
+    print()
+    
+    for i, (score, symbol_id, symbol_info) in enumerate(results, 1):
+        path, name, kind, start_line, end_line, signature = symbol_info[:6]
+        print(f"{i}. {name} ({kind}) in {path}:{start_line}-{end_line}")
+        if signature:
+            print(f"   Signature: {signature}")
+        print(f"   Score: {score:.4f}")
+        print()
 
+
+def cmd_graph(args: argparse.Namespace) -> int:
+    ensure_db(os.path.join(args.index_dir, DB_NAME))
+    graphs = []
+    if args.module:
+        graphs.append(build_module_graph(args.repo, args.index_dir))
+    if args.adapter:
+        graphs.append(build_adapter_graph())
+    if args.pipeline:
+        graphs.append(build_pipeline_graph())
+    if graphs:
+        for graph in graphs:
+            print(graph.to_markdown())
+
+    if args.stats:
+        stats = build_repo_statistics(args.repo, args.index_dir)
+        print(json.dumps(stats, indent=2))
+
+    if args.callers or args.callees:
+        db_path = os.path.join(args.index_dir, DB_NAME)
+        con = sqlite3.connect(db_path)
+        con.execute("PRAGMA foreign_keys = ON;")
+        try:
+            cur = con.cursor()
+            target_name = args.callers or args.callees
+            cur.execute(
+                "SELECT id, path, name FROM symbols WHERE name = ?",
+                (target_name,),
+            )
+            rows = cur.fetchall()
+            if not rows:
+                print(f"Symbol '{target_name}' not found in index.")
+            elif len(rows) > 1:
+                print(
+                    f"Symbol '{target_name}' is ambiguous. Please qualify with module path or namespace."
+                )
+            else:
+                symbol_id, symbol_path, symbol_name = rows[0]
+                if args.callers:
+                    callers = get_callers(con, symbol_id)
+                    if not callers:
+                        print(f"No callers found for {symbol_name} ({symbol_path}).")
+                    else:
+                        print(f"Callers of {symbol_name} ({symbol_path}):")
+                        for caller_id, caller_name, _callee_id, _callee_path in callers:
+                            caller_info = cur.execute(
+                                "SELECT path FROM symbols WHERE id = ?",
+                                (caller_id,),
+                            ).fetchone()
+                            caller_path = caller_info[0] if caller_info else "<unknown>"
+                            print(f" - {caller_name} ({caller_path})")
+                if args.callees:
+                    callees = get_callees(con, symbol_id)
+                    if not callees:
+                        print(f"No callees found for {symbol_name} ({symbol_path}).")
+                    else:
+                        print(f"Callees of {symbol_name} ({symbol_path}):")
+                        for _callee_id, callee_name, callee_symbol_id, callee_path in callees:
+                            if callee_symbol_id:
+                                path_row = cur.execute(
+                                    "SELECT path FROM symbols WHERE id = ?",
+                                    (callee_symbol_id,),
+                                ).fetchone()
+                                callee_path_resolved = path_row[0] if path_row else callee_path
+                            else:
+                                callee_path_resolved = callee_path
+                            label = callee_path_resolved or "<unknown path>"
+                            print(f" - {callee_name} ({label})")
+        finally:
+            con.close()
+
+    if not (graphs or args.stats or args.callers or args.callees):
+        print(
+            "No graph options selected. Use --module, --adapter, --pipeline, --stats, --callers, or --callees."
+        )
+    return 0
 
 def build_arg_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="semindex", description="Local Python semantic indexer (CPU-only)")
     sub = p.add_subparsers(dest="cmd", required=True)
 
-    p_idx = sub.add_parser("index", help="Index a Python repository")
-    p_idx.add_argument("repo", help="Path to repository root")
-    p_idx.add_argument("--index-dir", default=".semindex", help="Path to store index files (FAISS + SQLite)")
-    p_idx.add_argument("--model", default=os.environ.get("SEMINDEX_MODEL", "microsoft/codebert-base"))
-    p_idx.add_argument("--batch", type=int, default=16)
-    p_idx.add_argument("--verbose", action="store_true")
-    p_idx.add_argument("--include-docs", action="store_true", help="Also index external library docs")
+    p_idx = sub.add_parser("index", help="Index a repository")
+    p_idx.add_argument("repo", help="Path to repository to index")
+    p_idx.add_argument("--index-dir", default=".semindex", help="Index directory (default: .semindex)")
     p_idx.add_argument(
-        "--chunking",
-        choices=['symbol', 'semantic'],
-        default='symbol',
-        help="Chunking method to use: 'symbol' for original function/class-based, 'semantic' for semantic-aware chunking",
+        "--model",
+        default=os.environ.get("SEMINDEX_MODEL", "microsoft/codebert-base"),
+        help="Embedding model to use",
     )
+    p_idx.add_argument("--batch", type=int, default=16, help="Batch size for embedding")
+    p_idx.add_argument("--chunking", default="symbol", help="Chunking strategy (symbol|semantic)")
     p_idx.add_argument(
         "--similarity-threshold",
         type=float,
@@ -383,6 +467,13 @@ def build_arg_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Perform incremental indexing by only processing changed files",
     )
+    p_idx.add_argument(
+        "--include-docs",
+        action="store_true",
+        help="Also index external documentation (requires docs indexer deps)",
+    )
+    p_idx.add_argument("--hybrid", action="store_true", help="Enable hybrid search artifacts (deprecated; for compatibility)")
+    p_idx.add_argument("--verbose", action="store_true", help="Verbose output")
     p_idx.set_defaults(func=cmd_index)
 
     p_q = sub.add_parser("query", help="Query the semantic index")
@@ -394,6 +485,17 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p_q.add_argument("--include-docs", action="store_true", help="Include external docs in retrieval")
     p_q.add_argument("--docs-weight", type=float, default=0.4, help="Relative weight for docs vs code results (0-1)")
     p_q.set_defaults(func=cmd_query)
+
+    p_graph = sub.add_parser("graph", help="Generate graphs (Mermaid, metadata)")
+    p_graph.add_argument("repo", nargs="?", default=os.getcwd(), help="Repository root (default: cwd)")
+    p_graph.add_argument("--index-dir", default=".semindex", help="Index directory (default: .semindex)")
+    p_graph.add_argument("--module", action="store_true", help="Build module graph")
+    p_graph.add_argument("--adapter", action="store_true", help="Build adapter graph")
+    p_graph.add_argument("--pipeline", action="store_true", help="Build pipeline graph")
+    p_graph.add_argument("--stats", action="store_true", help="Show index statistics")
+    p_graph.add_argument("--callers", type=str, help="Show callers of fully qualified symbol name")
+    p_graph.add_argument("--callees", type=str, help="Show callees of fully qualified symbol name")
+    p_graph.set_defaults(func=cmd_graph)
 
     return p
 

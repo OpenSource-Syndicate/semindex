@@ -3,6 +3,12 @@ from typing import List, Tuple
 
 from .embed import Embedder
 from .local_llm import LocalLLM
+from .remote_llm import (
+    OpenAICompatibleConfig,
+    OpenAICompatibleError,
+    OpenAICompatibleLLM,
+    resolve_groq_config,
+)
 
 
 def _load_snippet(path: str, start_line: int, end_line: int) -> str:
@@ -64,3 +70,57 @@ def generate_answer(
         max_tokens=max_tokens,
     )
     return answer
+
+
+def generate_answer_remote(
+    index_dir: str,
+    query: str,
+    *,
+    top_k: int = 8,
+    hybrid: bool = False,
+    embed_model: str | None = None,
+    max_tokens: int = 512,
+    system_prompt: str | None = None,
+    api_key: str | None = None,
+    api_base: str | None = None,
+    model: str | None = None,
+    stop: list[str] | None = None,
+) -> str:
+    """Generate an answer using a remote OpenAI-compatible LLM."""
+
+    config: OpenAICompatibleConfig | None = resolve_groq_config(
+        api_key=api_key,
+        api_base=api_base,
+        model=model,
+    )
+    if config is None:
+        raise OpenAICompatibleError(
+            "Remote LLM configuration missing API key. "
+            "Set `SEMINDEX_REMOTE_API_KEY` or pass `api_key`."
+        )
+
+    snippets = retrieve_context(
+        index_dir,
+        query,
+        top_k=top_k,
+        hybrid=hybrid,
+        embed_model=embed_model,
+    )
+    snippets_sorted = [
+        s for _score, s in sorted(snippets, key=lambda x: x[0], reverse=True)
+    ]
+
+    final_system_prompt = system_prompt or (
+        "You are a remote code assistant. Answer accurately using the provided "
+        "code/documentation snippets. Cite file paths inline where relevant. "
+        "If uncertain, say so."
+    )
+
+    llm = OpenAICompatibleLLM(config)
+    return llm.generate(
+        system_prompt=final_system_prompt,
+        user_prompt=query,
+        context_chunks=snippets_sorted,
+        max_tokens=max_tokens,
+        stop=stop,
+    )

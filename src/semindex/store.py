@@ -2,7 +2,7 @@ import os
 import hashlib
 import sqlite3
 from contextlib import contextmanager
-from typing import Iterable, List, Tuple
+from typing import Iterable, List, Tuple, Optional
 
 import faiss
 import numpy as np
@@ -78,10 +78,17 @@ def remove_file_from_index(db_path: str, index_path: str, file_path: str):
     """Remove all artifacts corresponding to a file from SQLite and FAISS."""
 
     conn = sqlite3.connect(db_path)
+    conn.execute("PRAGMA foreign_keys = ON;")
     cursor = conn.cursor()
 
     cursor.execute("SELECT id FROM symbols WHERE path = ?", (file_path,))
     symbol_ids = [row[0] for row in cursor.fetchall()]
+
+    if symbol_ids:
+        cursor.executemany(
+            "DELETE FROM calls WHERE caller_id = ? OR callee_symbol_id = ?",
+            [(sid, sid) for sid in symbol_ids],
+        )
 
     cursor.execute("DELETE FROM symbols WHERE path = ?", (file_path,))
     cursor.execute("DELETE FROM files WHERE path = ?", (file_path,))
@@ -128,8 +135,26 @@ def ensure_db(db_path: str):
         CREATE TABLE IF NOT EXISTS vectors (
             rowid INTEGER PRIMARY KEY AUTOINCREMENT,
             symbol_id INTEGER NOT NULL,
-            FOREIGN KEY(symbol_id) REFERENCES symbols(id)
+            FOREIGN KEY(symbol_id) REFERENCES symbols(id) ON DELETE CASCADE
         );
+        """
+    )
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS calls (
+            caller_id INTEGER NOT NULL,
+            callee_name TEXT NOT NULL,
+            callee_symbol_id INTEGER,
+            callee_path TEXT,
+            FOREIGN KEY(caller_id) REFERENCES symbols(id) ON DELETE CASCADE,
+            FOREIGN KEY(callee_symbol_id) REFERENCES symbols(id) ON DELETE SET NULL
+        );
+        """
+    )
+    cur.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_calls_unique
+        ON calls (caller_id, callee_name, IFNULL(callee_symbol_id, -1), IFNULL(callee_path, ''));
         """
     )
 
@@ -178,6 +203,7 @@ def ensure_db(db_path: str):
 @contextmanager
 def db_conn(db_path: str):
     con = sqlite3.connect(db_path)
+    con.execute("PRAGMA foreign_keys = ON;")
     try:
         yield con
     finally:
@@ -195,6 +221,7 @@ def reset_index(index_dir: str, dim: int):
         cur = con.cursor()
         cur.execute("DELETE FROM vectors;")
         cur.execute("DELETE FROM symbols;")
+        cur.execute("DELETE FROM calls;")
 
     # Also reset docs index
     faiss.write_index(faiss.IndexFlatIP(dim), os.path.join(index_dir, DOCS_FAISS_INDEX))
@@ -239,6 +266,20 @@ def add_vectors(index_path: str, con: sqlite3.Connection, symbol_ids: List[int],
     faiss.write_index(index, index_path)
     cur = con.cursor()
     cur.executemany("INSERT INTO vectors (symbol_id) VALUES (?);", [(sid,) for sid in symbol_ids])
+
+
+def add_calls(
+    con: sqlite3.Connection,
+    call_rows: Iterable[Tuple[int, str, Optional[int], Optional[str]]],
+) -> None:
+    cur = con.cursor()
+    cur.executemany(
+        """
+        INSERT OR IGNORE INTO calls (caller_id, callee_name, callee_symbol_id, callee_path)
+        VALUES (?, ?, ?, ?);
+        """,
+        list(call_rows),
+    )
 
 
 def add_doc_vectors(index_path: str, con: sqlite3.Connection, page_ids: List[int], vectors: np.ndarray):
@@ -353,6 +394,35 @@ def get_doc_page_by_id(con: sqlite3.Connection, page_id: int):
         (page_id,),
     )
     return cur.fetchone()
+
+
+def get_callers(con: sqlite3.Connection, symbol_id: int) -> List[Tuple[int, str, Optional[int], Optional[str]]]:
+    cur = con.cursor()
+    cur.execute(
+        """
+        SELECT caller_id, symbols.name, calls.callee_symbol_id, calls.callee_path
+        FROM calls
+        JOIN symbols ON symbols.id = calls.caller_id
+        WHERE calls.callee_symbol_id = ?
+        ORDER BY symbols.name
+        """,
+        (symbol_id,),
+    )
+    return cur.fetchall()
+
+
+def get_callees(con: sqlite3.Connection, symbol_id: int) -> List[Tuple[int, str, Optional[int], Optional[str]]]:
+    cur = con.cursor()
+    cur.execute(
+        """
+        SELECT calls.callee_symbol_id, calls.callee_name, calls.callee_symbol_id, calls.callee_path
+        FROM calls
+        WHERE caller_id = ?
+        ORDER BY calls.callee_name
+        """,
+        (symbol_id,),
+    )
+    return cur.fetchall()
 
 
 def _ensure_column(cur: sqlite3.Cursor, table: str, column: str, ddl: str) -> None:

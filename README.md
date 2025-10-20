@@ -137,7 +137,10 @@ Query options:
 
 `scripts/gen_docs.py` produces Markdown documentation in `wiki/` using repository statistics, Mermaid graphs, and an LLM-backed writer. Key capabilities provided by `semindex.docs`:
 
-- **Auto planner**: `generate_plan()` selects sections such as overview, architecture, indexing, and language coverage based on indexed data.
+- **Auto planner**: `generate_plan()` intelligently selects documentation sections based on:
+  - **Rule-based sections**: Overview, architecture, adapters, indexing, language coverage
+  - **Index-discovered sections**: Key modules, key classes, key functions, architectural patterns
+  - Dynamically queries the indexed codebase to identify critical components and patterns
 - **Graph builders**: `build_pipeline_graph()`, `build_module_graph()`, and `build_adapter_graph()` emit diagrams stored alongside generated docs.
 - **LLM flexibility**: `LocalLLM` auto-downloads a TinyLlama GGUF model (override with `SEMINDEX_LLM_PATH`) while `OpenAICompatibleLLM` supports Groq/OpenAI-compatible endpoints via `SEMINDEX_REMOTE_API_KEY`, `SEMINDEX_REMOTE_API_BASE`, and `SEMINDEX_REMOTE_MODEL`.
 

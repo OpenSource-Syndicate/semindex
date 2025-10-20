@@ -13,6 +13,7 @@ from .store import (
     DB_NAME,
     FAISS_INDEX,
     add_vectors,
+    add_calls,
     ensure_db,
     db_conn,
     reset_index,
@@ -95,6 +96,7 @@ class Indexer:
         all_symbol_rows: List[Tuple[str, str, str, int, int, str, str, str, str, str, str, str]] = []
         all_texts: List[str] = []
         file_hashes: List[Tuple[str, str, str]] = []
+        call_records: List[Tuple[str, str, str]] = []
 
         for language_name, adapter, path in targets:
             try:
@@ -107,6 +109,7 @@ class Indexer:
             current_hash = file_sha256_from_content(source.encode("utf-8"))
 
             parse_failed = False
+            calls_local: List[Tuple[str, str]] = []
             try:
                 result: ParseResult = adapter.process_file(
                     path,
@@ -114,6 +117,7 @@ class Indexer:
                     self.embedder,
                     chunk_config,
                 )
+                calls_local = result.calls or []
             except Exception as exc:
                 parse_failed = True
                 if verbose:
@@ -122,6 +126,7 @@ class Indexer:
             if parse_failed:
                 symbols = [self._make_module_symbol(path, source, language_name)]
                 chunks = [Chunk(symbol=symbols[0], text=source)]
+                calls_local = []
             else:
                 symbols = list(result.symbols)
                 chunks = list(result.chunks)
@@ -156,6 +161,10 @@ class Indexer:
                 all_texts.append(chunk.text)
 
             file_hashes.append((path, current_hash, language_name))
+
+            for caller, callee in calls_local:
+                if caller and callee:
+                    call_records.append((path, caller, callee))
 
         if not (all_symbol_rows or file_hashes or all_texts):
             if verbose:
@@ -208,6 +217,43 @@ class Indexer:
             if all_texts:
                 vecs = self.embedder.encode(all_texts, batch_size=batch)
                 add_vectors(index_path, con, symbol_ids, vecs)
+
+            if call_records:
+                cur.execute("SELECT id, path, name, signature, kind FROM symbols")
+                symbol_rows = cur.fetchall()
+                symbol_id_map: dict[Tuple[str, str], int] = {}
+                symbols_by_name: dict[str, List[Tuple[int, str]]] = {}
+                for sid, spath, sname, ssignature, skind in symbol_rows:
+                    symbol_id_map[(spath, sname)] = sid
+                    symbols_by_name.setdefault(sname, []).append((sid, spath))
+
+                call_rows: List[Tuple[int, str, Optional[int], Optional[str]]] = []
+                seen_edges: set[Tuple[int, str, Optional[int]]] = set()
+                for path, caller_name, callee_name in sorted(call_records):
+                    caller_id = symbol_id_map.get((path, caller_name))
+                    if not caller_id:
+                        continue
+                    callee_id: Optional[int] = None
+                    callee_path: Optional[str] = None
+
+                    candidate = symbol_id_map.get((path, callee_name))
+                    if candidate:
+                        callee_id = candidate
+                        callee_path = path
+                    else:
+                        matches = symbols_by_name.get(callee_name) or []
+                        if len(matches) == 1:
+                            callee_id = matches[0][0]
+                            callee_path = matches[0][1]
+
+                    edge_key = (caller_id, callee_name, callee_id)
+                    if edge_key in seen_edges:
+                        continue
+                    seen_edges.add(edge_key)
+                    call_rows.append((caller_id, callee_name, callee_id, callee_path))
+
+                if call_rows:
+                    add_calls(con, call_rows)
 
         # Optional keyword index (best-effort)
         try:

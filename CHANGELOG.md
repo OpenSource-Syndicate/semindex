@@ -1,4 +1,28 @@
 # Changelog
+
+## [Unreleased]
+
+### Added
+- Implemented `cmd_query()` CLI function for semantic search with support for hybrid search and documentation merging
+- Enhanced autoplan with index-driven section discovery:
+  - `_discover_key_modules()`: Identifies core modules by symbol count
+  - `_discover_key_classes()`: Finds important classes by structural complexity
+  - `_discover_key_functions()`: Locates critical functions via call graph analysis
+  - `_discover_patterns()`: Detects architectural patterns (testing, configuration, API, data layer)
+- Added `PlanningRule` dataclass for declarative section planning rules
+- Refactored `generate_plan()` to support both rule-based and index-discovered sections
+
+### Changed
+- Autoplan now generates documentation sections dynamically from indexed codebase rather than hardcoded templates
+- `generate_plan()` accepts optional `index_dir` parameter to enable index-based discovery
+- Improved code organization with separation of concerns in planning logic
+- README.md updated to reflect index-driven documentation planning
+
+### Fixed
+- Fixed missing `cmd_query` function that was causing NameError in CLI
+- Added missing imports (`json`, `sqlite3`) to cli.py
+- Fixed unpacking error in query result formatting (6 fields instead of 7)
+
 ## [0.3.0] - 2025-10-20
 
 ### Added
