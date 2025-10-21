@@ -218,7 +218,8 @@ class ComponentGenerator:
                         name=comp_data["name"],
                         description=comp_data["description"],
                         component_type=comp_data["component_type"],
-                        file_path=file_path
+                        file_path=file_path,
+                        dependencies=comp_data.get("dependencies", [])
                     )
                     
                     components.append(component)
@@ -228,7 +229,8 @@ class ComponentGenerator:
                     name=f"{task.name.replace(' ', '_')}_implementation",
                     description=f"Implementation for task: {task.description}",
                     component_type="function",  # Default to function
-                    file_path=self._determine_file_path(task.name, "function")
+                    file_path=self._determine_file_path(task.name, "function"),
+                    dependencies=[]
                 ))
         
         return components

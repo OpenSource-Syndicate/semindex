@@ -22,6 +22,7 @@ dependencies = [
     "beautifulsoup4==4.12.3",
     "html2text==2024.2.26",
     "toml>=0.10.2",
+    "llama-cpp-python>=0.3.16",
 ]
 
 [project.optional-dependencies]

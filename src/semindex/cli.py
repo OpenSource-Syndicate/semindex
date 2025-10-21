@@ -743,7 +743,7 @@ def cmd_ai_plan_execute(args: argparse.Namespace) -> None:
         # Validate generated code
         validation_errors = dev_workflow.validate_generated_code()
         if not validation_errors:
-            print("✓ All generated code has valid syntax")
+            print("[OK] All generated code has valid syntax")
         
         # Generate tests if requested
         if args.generate_tests:
@@ -765,9 +765,9 @@ def cmd_ai_plan_execute(args: argparse.Namespace) -> None:
             # Validate integration
             validation_results = integration_manager.validate_integration()
             if validation_results["valid"]:
-                print("✓ Integration validation successful")
+                print("[OK] Integration validation successful")
             else:
-                print("✗ Integration validation failed:")
+                print("[ERROR] Integration validation failed:")
                 for issue in validation_results["issues"]:
                     print(f"  - {issue}")
         

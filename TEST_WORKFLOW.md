@@ -37,7 +37,7 @@ Indexed 218 chunks from repository ...
 Verify that discovery functions find content:
 
 ```powershell
-uv run python test_discovery.py
+uv run python tests/test_discovery.py
 ```
 
 Expected output:
@@ -141,7 +141,7 @@ The following sections are now **dynamically discovered** from the indexed codeb
 
 **Solution**: 
 1. Verify index was created: `Test-Path .semindex/semindex.db`
-2. Run test_discovery.py to check if content is found
+2. Run tests/test_discovery.py to check if content is found
 3. Check that gen_docs.py is passing index_dir to generate_plan()
 
 ### Empty discovery results
@@ -151,7 +151,7 @@ The following sections are now **dynamically discovered** from the indexed codeb
 **Solution**:
 1. Verify indexing completed: `uv run semindex index src --index-dir .semindex --verbose`
 2. Check database has symbols: `sqlite3 .semindex/semindex.db "SELECT COUNT(*) FROM symbols;"`
-3. Run test_discovery.py with verbose output
+3. Run tests/test_discovery.py with verbose output
 
 ### Template errors
 

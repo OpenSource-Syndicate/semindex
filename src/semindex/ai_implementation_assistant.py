@@ -362,3 +362,11 @@ class AIImplementationAssistant:
         )
         
         return response
+
+    def _get_llm_instance(self):
+        """Helper to get the LLM instance - used by other components in the system"""
+        from .local_llm import LocalLLM
+        return LocalLLM(
+            model_type="transformer",
+            model_name=os.environ.get("SEMINDEX_TRANSFORMER_MODEL", "TinyLlama/TinyLlama-1.1B-Chat-v1.0")
+        )

@@ -52,19 +52,33 @@ class TransformerLLM:
         if self.tokenizer.pad_token is None:
             self.tokenizer.pad_token = self.tokenizer.eos_token
             
-        self.model = AutoModelForCausalLM.from_pretrained(
-            model_name,
-            torch_dtype=torch_dtype,
-            device_map=self.device if self.device == "cpu" else {"": self.device},  # Handle CPU properly
-            trust_remote_code=True
-        )
+        # Load model with appropriate parameters to avoid accelerate conflicts
+        # Don't specify device_map if it might conflict with accelerate
+        try:
+            # First try loading without device_map to avoid accelerate conflicts
+            self.model = AutoModelForCausalLM.from_pretrained(
+                model_name,
+                torch_dtype=torch_dtype,
+                trust_remote_code=True
+            )
+        except Exception:
+            # If that fails, attempt with device_map
+            self.model = AutoModelForCausalLM.from_pretrained(
+                model_name,
+                torch_dtype=torch_dtype,
+                device_map="auto" if self.device != "cpu" else None,
+                trust_remote_code=True
+            )
         
         # Create text generation pipeline
+        # For CPU, always use device -1; for GPU, use device 0 or appropriate GPU index
+        pipeline_device = -1 if self.device == "cpu" else (0 if self.device == "cuda" else self.device)
+        
         self.generator = pipeline(
             "text-generation",
             model=self.model,
             tokenizer=self.tokenizer,
-            device=0 if self.device.startswith("cuda") else -1,  # -1 for CPU
+            device=pipeline_device,
             max_new_tokens=min(512, n_ctx // 2),  # Generate at most half the context
         )
 

@@ -22,7 +22,7 @@ DEFAULT_LLM_URL = os.environ.get(
 
 DEFAULT_LLM_SHA256 = os.environ.get(
     "SEMINDEX_LLM_SHA256",
-    "f5c78a7c5d5d657a7eabe76fd2cb51c23b71612f6c1b23c2e9f06d6d61bb64ed",
+    "9fecc3b3cd76bba89d504f29b616eedf7da85b96540e490ca5824d3f7d2776a0",
 )
 
 AUTO_DOWNLOAD = os.environ.get("SEMINDEX_LLM_AUTO_DOWNLOAD", "1").lower() not in {
@@ -245,8 +245,10 @@ class LocalLLM:
             response.raise_for_status()
             total = int(response.headers.get("Content-Length", 0))
             downloaded = 0
-            with tempfile.NamedTemporaryFile(delete=False) as tmp:
-                try:
+            # Create a temporary file in the same directory as destination to avoid cross-device issues on Windows
+            temp_path = destination + ".tmp"
+            try:
+                with open(temp_path, 'wb') as tmp:
                     for chunk in response.iter_content(chunk_size=chunk_size):
                         if not chunk:
                             continue
@@ -256,10 +258,21 @@ class LocalLLM:
                             percent = downloaded / total * 100
                             print(f"[llm] Downloaded {downloaded // (1024 * 1024)} MiB ({percent:0.1f}%)", end="\r")
                     tmp.flush()
-                    os.replace(tmp.name, destination)
-                except Exception:
-                    os.unlink(tmp.name)
-                    raise
+                    # Ensure the file is closed before moving
+                    os.fsync(tmp.fileno())
+                
+                # Move the temporary file to the destination
+                if os.path.exists(destination):
+                    os.remove(destination)
+                os.rename(temp_path, destination)
+            except Exception:
+                # Clean up the temporary file if something goes wrong
+                if os.path.exists(temp_path):
+                    try:
+                        os.remove(temp_path)
+                    except:
+                        pass  # If we can't remove it, there's nothing more we can do
+                raise
         print(f"\n[llm] Model stored at {destination}")
 
     @staticmethod

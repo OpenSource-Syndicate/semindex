@@ -199,7 +199,7 @@ class DevelopmentWorkflow:
                     
                     # Validate syntax by attempting to compile
                     compile(code, str(file_path), 'exec')
-                    print(f"✓ Valid syntax in {file_path}")
+                    print(f"[OK] Valid syntax in {file_path}")
                 else:
                     validation_errors.append(f"File does not exist: {component.file_path}")
             except SyntaxError as e:

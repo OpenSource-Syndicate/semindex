@@ -208,9 +208,17 @@ __marimo__/
 
 # semindex
 .semindex/
+.semindex_test/
+.semindex_test2/
 wiki/
 
 .cascade_memory
 
 # Configuration
 config.toml
+
+# Test and build artifacts
+.pytest_cache/
+tmp_debug_cli/
+test_project/
+dist/

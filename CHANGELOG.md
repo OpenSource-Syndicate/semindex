@@ -37,7 +37,7 @@
   - Added specific getters for different services (Perplexica, OpenAI, Groq, Ollama)
 - Added new dependencies: `toml` for configuration file parsing
 - Added new modules: `project_planner.py`, `task_manager.py`, `development_workflow.py`, `testing_framework.py`, `integration_manager.py`, `perplexica_adapter.py`, `config.py`, `ai_implementation_assistant.py`, `focus_modes.py`, `component_generator.py`
-- Added new test modules: `test_config.py`, `test_perplexica_integration.py`, `test_ai_planning.py`, and `e2e_test.py` for end-to-end testing
+- Added new test modules: `test_config.py`, `test_perplexica_integration.py`, and test files in the `tests` directory (`test_ai_planning.py` and `e2e_test.py`) for end-to-end testing
 - Added new command-line interface options for the new AI planning and Perplexica commands
 
 ### Changed

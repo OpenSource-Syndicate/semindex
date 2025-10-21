@@ -358,7 +358,8 @@ class ProjectPlanner:
                         name=name,
                         description=f"{kind.capitalize()} {name} in {path}",
                         component_type=component_type,
-                        file_path=file_path
+                        file_path=file_path,
+                        dependencies=[]
                     ))
         except Exception as e:
             print(f"Error extracting components from codebase: {e}")

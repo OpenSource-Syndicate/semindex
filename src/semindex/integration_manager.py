@@ -145,7 +145,7 @@ class IntegrationManager:
             module = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(module)
             
-            print(f"✓ Integration validation successful for {adapter_file_path}")
+            print(f"[OK] Integration validation successful for {adapter_file_path}")
             
         except SyntaxError as e:
             validation_results["valid"] = False
