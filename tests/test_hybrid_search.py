@@ -131,3 +131,24 @@ def test_hybrid_search_empty_results():
                 
                 # Should return an empty list
                 assert results == []
+
+
+def test_reciprocal_rank_fusion_edge_cases():
+    """Test RRF with various edge cases."""
+    # Test with duplicate entries
+    dense_results = [
+        (0.9, 1, ("path1", "func1", "function", 1, 10, "def func1()")),
+        (0.8, 2, ("path2", "func2", "function", 10, 20, "def func2()")),
+    ]
+    
+    keyword_results = [
+        KeywordResult(1, "path1", "func1", "function", 2.5),  # Same as dense result 0
+        KeywordResult(3, "path3", "func3", "function", 2.0),
+    ]
+    
+    result = reciprocal_rank_fusion(dense_results, keyword_results, top_k=5)
+    assert len(result) <= 3  # Should have 3 unique results
+    symbol_ids = [item[0] for item in result]
+    assert 1 in symbol_ids  # Common result
+    assert 2 in symbol_ids  # From dense only
+    assert 3 in symbol_ids  # From keyword only

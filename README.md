@@ -4,7 +4,6 @@ Advanced local semantic codebase indexer for Python (with optional Tree-sitter
 languages) using AST + embeddings.
 
 - Language-aware adapters with per-file metadata (language, namespace, symbol type)
-
 - Pluggable language adapter registry with automatic file-type discovery
 - Optional Tree-sitter powered adapters for a total of **12 languages** when the
   extras are installed, including `javascript`, `java`, `typescript`, `csharp`,
@@ -19,6 +18,9 @@ languages) using AST + embeddings.
 - Incremental indexing by file hash
 - Metadata/XRef via SQLite (basic)
 - External library documentation indexing (PyPI/local site-packages) stored in a separate FAISS + SQLite space and merged at query time
+- AI-powered commands for code understanding and generation (chat, explain, suggest, generate, docs, bugs, refactor, tests)
+- Graph generation capabilities (module, adapter, pipeline graphs and code statistics)
+- Call graph analysis (who-calls/used-by relationships)
 
 ## Install
 
@@ -112,6 +114,23 @@ semindex query "how to open a file" --index-dir .semindex --hybrid
 
 # Query including external docs merged with code
 semindex query "fastapi router" --index-dir .semindex --include-docs --docs-weight 0.4
+
+# Generate graphs and statistics about your codebase
+semindex graph --repo <path-to-repo> --index-dir .semindex --module --stats
+
+# Analyze call relationships
+semindex graph --index-dir .semindex --callers function_name
+semindex graph --index-dir .semindex --callees function_name
+
+# AI-powered commands for understanding your codebase
+semindex ai chat --index-dir .semindex  # Interactive chat about your code
+semindex ai explain function_name --index-dir .semindex  # Explain a function/class
+semindex ai suggest --index-dir .semindex  # Suggest improvements
+semindex ai generate "create a function to add two numbers" --index-dir .semindex  # Generate code
+semindex ai docs function_name --index-dir .semindex  # Generate documentation
+semindex ai bugs function_name --index-dir .semindex  # Find potential bugs
+semindex ai refactor function_name --index-dir .semindex  # Suggest refactoring
+semindex ai tests function_name --framework pytest --index-dir .semindex  # Generate unit tests
 ```
 
 Indexing options:
@@ -132,6 +151,22 @@ Query options:
 - `--top-k` number of results to return (default 10)
 - `--include-docs` include external library docs results
 - `--docs-weight` weight (0-1) applied when merging docs vs code results (default 0.4)
+
+Graph options:
+- `--module` generate module dependency graph
+- `--adapter` generate language adapter graph
+- `--pipeline` generate pipeline flow graph
+- `--stats` show repository statistics
+- `--callers` show who calls a specific function/class
+- `--callees` show what functions/classes a specific function/class calls
+
+AI command options:
+- `--top-k` number of context snippets to retrieve (default 5)
+- `--llm-path` path to local LLM model
+- `--max-tokens` maximum tokens for LLM response (default 512)
+- `--hybrid` use hybrid search for context retrieval
+- `--include-context` include relevant code context in generation (for generate command)
+- `--framework` testing framework to use (for tests command, default pytest)
 
 ## Documentation generation (`scripts/gen_docs.py`)
 

@@ -10,4 +10,5 @@ __all__ = [
     "indexer",
     "local_llm",
     "remote_llm",
+    "ai",
 ]

@@ -36,6 +36,16 @@ from .docs.graph_builder import (
     build_pipeline_graph,
     build_repo_statistics,
 )
+from .ai import (
+    cmd_ai_chat,
+    cmd_ai_explain,
+    cmd_ai_suggest,
+    cmd_ai_generate,
+    cmd_ai_docs,
+    cmd_ai_find_bugs,
+    cmd_ai_refactor,
+    cmd_ai_tests,
+)
 
 
 # Re-export helpers expected by tests for monkeypatching.
@@ -496,6 +506,98 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p_graph.add_argument("--callers", type=str, help="Show callers of fully qualified symbol name")
     p_graph.add_argument("--callees", type=str, help="Show callees of fully qualified symbol name")
     p_graph.set_defaults(func=cmd_graph)
+
+    # AI command parser
+    p_ai = sub.add_parser("ai", help="AI-powered commands for code understanding and generation")
+    ai_sub = p_ai.add_subparsers(dest="ai_cmd", required=True)
+    
+    # AI chat command
+    p_ai_chat = ai_sub.add_parser("chat", help="Start an interactive AI chat session about the codebase")
+    p_ai_chat.add_argument("--index-dir", default=".semindex", help="Index directory (default: .semindex)")
+    p_ai_chat.add_argument("--model", default=os.environ.get("SEMINDEX_MODEL", "microsoft/codebert-base"))
+    p_ai_chat.add_argument("--llm-path", help="Path to local LLM model")
+    p_ai_chat.add_argument("--top-k", type=int, default=5, help="Number of context snippets to retrieve")
+    p_ai_chat.add_argument("--max-tokens", type=int, default=512, help="Maximum tokens for LLM response")
+    p_ai_chat.add_argument("--hybrid", action="store_true", help="Use hybrid search for context retrieval")
+    p_ai_chat.set_defaults(func=cmd_ai_chat)
+    
+    # AI explain command
+    p_ai_explain = ai_sub.add_parser("explain", help="Explain code functionality")
+    p_ai_explain.add_argument("target", help="Code element to explain (function, class, module, etc.)")
+    p_ai_explain.add_argument("--index-dir", default=".semindex", help="Index directory (default: .semindex)")
+    p_ai_explain.add_argument("--model", default=os.environ.get("SEMINDEX_MODEL", "microsoft/codebert-base"))
+    p_ai_explain.add_argument("--llm-path", help="Path to local LLM model")
+    p_ai_explain.add_argument("--top-k", type=int, default=5, help="Number of context snippets to retrieve")
+    p_ai_explain.add_argument("--max-tokens", type=int, default=512, help="Maximum tokens for LLM response")
+    p_ai_explain.add_argument("--hybrid", action="store_true", help="Use hybrid search for context retrieval")
+    p_ai_explain.set_defaults(func=cmd_ai_explain)
+    
+    # AI suggest command
+    p_ai_suggest = ai_sub.add_parser("suggest", help="Suggest improvements to the codebase")
+    p_ai_suggest.add_argument("--index-dir", default=".semindex", help="Index directory (default: .semindex)")
+    p_ai_suggest.add_argument("--model", default=os.environ.get("SEMINDEX_MODEL", "microsoft/codebert-base"))
+    p_ai_suggest.add_argument("--llm-path", help="Path to local LLM model")
+    p_ai_suggest.add_argument("--top-k", type=int, default=5, help="Number of context snippets to retrieve")
+    p_ai_suggest.add_argument("--max-tokens", type=int, default=512, help="Maximum tokens for LLM response")
+    p_ai_suggest.add_argument("--hybrid", action="store_true", help="Use hybrid search for context retrieval")
+    p_ai_suggest.set_defaults(func=cmd_ai_suggest)
+    
+    # AI generate command
+    p_ai_generate = ai_sub.add_parser("generate", help="Generate code based on description")
+    p_ai_generate.add_argument("description", help="Description of the code to generate")
+    p_ai_generate.add_argument("--index-dir", default=".semindex", help="Index directory (default: .semindex)")
+    p_ai_generate.add_argument("--model", default=os.environ.get("SEMINDEX_MODEL", "microsoft/codebert-base"))
+    p_ai_generate.add_argument("--llm-path", help="Path to local LLM model")
+    p_ai_generate.add_argument("--top-k", type=int, default=5, help="Number of context snippets to retrieve")
+    p_ai_generate.add_argument("--max-tokens", type=int, default=512, help="Maximum tokens for LLM response")
+    p_ai_generate.add_argument("--hybrid", action="store_true", help="Use hybrid search for context retrieval")
+    p_ai_generate.add_argument("--include-context", action="store_true", help="Include relevant code context in generation")
+    p_ai_generate.set_defaults(func=cmd_ai_generate)
+    
+    # AI docs command
+    p_ai_docs = ai_sub.add_parser("docs", help="Generate documentation for code elements")
+    p_ai_docs.add_argument("target", help="Code element to document (function, class, module, etc.)")
+    p_ai_docs.add_argument("--index-dir", default=".semindex", help="Index directory (default: .semindex)")
+    p_ai_docs.add_argument("--model", default=os.environ.get("SEMINDEX_MODEL", "microsoft/codebert-base"))
+    p_ai_docs.add_argument("--llm-path", help="Path to local LLM model")
+    p_ai_docs.add_argument("--top-k", type=int, default=5, help="Number of context snippets to retrieve")
+    p_ai_docs.add_argument("--max-tokens", type=int, default=512, help="Maximum tokens for LLM response")
+    p_ai_docs.add_argument("--hybrid", action="store_true", help="Use hybrid search for context retrieval")
+    p_ai_docs.set_defaults(func=cmd_ai_docs)
+    
+    # AI find bugs command
+    p_ai_bugs = ai_sub.add_parser("bugs", help="Find potential bugs in code")
+    p_ai_bugs.add_argument("target", nargs="?", help="Specific code element to analyze for bugs (optional)")
+    p_ai_bugs.add_argument("--index-dir", default=".semindex", help="Index directory (default: .semindex)")
+    p_ai_bugs.add_argument("--model", default=os.environ.get("SEMINDEX_MODEL", "microsoft/codebert-base"))
+    p_ai_bugs.add_argument("--llm-path", help="Path to local LLM model")
+    p_ai_bugs.add_argument("--top-k", type=int, default=5, help="Number of context snippets to retrieve")
+    p_ai_bugs.add_argument("--max-tokens", type=int, default=512, help="Maximum tokens for LLM response")
+    p_ai_bugs.add_argument("--hybrid", action="store_true", help="Use hybrid search for context retrieval")
+    p_ai_bugs.set_defaults(func=cmd_ai_find_bugs)
+    
+    # AI refactoring command
+    p_ai_refactor = ai_sub.add_parser("refactor", help="Suggest refactoring opportunities")
+    p_ai_refactor.add_argument("target", nargs="?", help="Specific code element to analyze for refactoring (optional)")
+    p_ai_refactor.add_argument("--index-dir", default=".semindex", help="Index directory (default: .semindex)")
+    p_ai_refactor.add_argument("--model", default=os.environ.get("SEMINDEX_MODEL", "microsoft/codebert-base"))
+    p_ai_refactor.add_argument("--llm-path", help="Path to local LLM model")
+    p_ai_refactor.add_argument("--top-k", type=int, default=5, help="Number of context snippets to retrieve")
+    p_ai_refactor.add_argument("--max-tokens", type=int, default=512, help="Maximum tokens for LLM response")
+    p_ai_refactor.add_argument("--hybrid", action="store_true", help="Use hybrid search for context retrieval")
+    p_ai_refactor.set_defaults(func=cmd_ai_refactor)
+    
+    # AI tests command
+    p_ai_tests = ai_sub.add_parser("tests", help="Generate unit tests for code")
+    p_ai_tests.add_argument("target", help="Code element to generate tests for")
+    p_ai_tests.add_argument("--framework", default="pytest", help="Testing framework to use (default: pytest)")
+    p_ai_tests.add_argument("--index-dir", default=".semindex", help="Index directory (default: .semindex)")
+    p_ai_tests.add_argument("--model", default=os.environ.get("SEMINDEX_MODEL", "microsoft/codebert-base"))
+    p_ai_tests.add_argument("--llm-path", help="Path to local LLM model")
+    p_ai_tests.add_argument("--top-k", type=int, default=5, help="Number of context snippets to retrieve")
+    p_ai_tests.add_argument("--max-tokens", type=int, default=512, help="Maximum tokens for LLM response")
+    p_ai_tests.add_argument("--hybrid", action="store_true", help="Use hybrid search for context retrieval")
+    p_ai_tests.set_defaults(func=cmd_ai_tests)
 
     return p
 

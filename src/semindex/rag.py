@@ -62,7 +62,11 @@ def generate_answer(
         "Cite file paths inline where relevant. If uncertain, say so."
     )
 
-    llm = LocalLLM(model_path=llm_path)
+    if llm_path:
+        llm = LocalLLM(model_path=llm_path)
+    else:
+        # Use transformer model by default
+        llm = LocalLLM(model_type="transformer", model_name=os.environ.get("SEMINDEX_TRANSFORMER_MODEL", "TinyLlama/TinyLlama-1.1B-Chat-v1.0"))
     answer = llm.generate(
         system_prompt=system_prompt,
         user_prompt=query,

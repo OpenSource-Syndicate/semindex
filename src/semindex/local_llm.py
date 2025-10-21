@@ -5,8 +5,9 @@ from typing import Iterable, List, Optional
 
 import requests
 
-# Lightweight CPU-only local LLM via llama.cpp bindings
-# Requires a local GGUF file (quantized), e.g., phi-3-mini-4k-instruct.Q4_K_M.gguf
+# Lightweight CPU-only local LLM supporting both llama.cpp and transformer models
+# For llama.cpp: Requires a local GGUF file (quantized), e.g., phi-3-mini-4k-instruct.Q4_K_M.gguf
+# For transformers: Uses HuggingFace models directly
 # Default model path can be overridden with env SEMINDEX_LLM_PATH
 
 DEFAULT_LLM_PATH = os.environ.get(
@@ -33,34 +34,67 @@ AUTO_DOWNLOAD = os.environ.get("SEMINDEX_LLM_AUTO_DOWNLOAD", "1").lower() not in
 
 class LocalLLM:
     """
-    Simple wrapper around llama-cpp-python for local CPU inference.
+    Wrapper for local LLM inference, supporting both llama.cpp and transformer models.
 
     Example:
-        llm = LocalLLM()  # ensure the GGUF exists at DEFAULT_LLM_PATH or set SEMINDEX_LLM_PATH
+        # For llama.cpp models
+        llm = LocalLLM(model_type="llama-cpp")  # ensure the GGUF exists at DEFAULT_LLM_PATH
+        # For transformer models
+        llm = LocalLLM(model_type="transformer", model_name="microsoft/phi-2")
         text = llm.generate("You are a helpful assistant.", "Explain FAISS in two sentences.")
     """
 
     def __init__(
         self,
         model_path: Optional[str] = None,
+        model_name: Optional[str] = None,  # For transformer models
+        model_type: str = "llama-cpp",  # "llama-cpp" or "transformer"
         n_ctx: int = 4096,
         n_threads: Optional[int] = None,
         n_gpu_layers: int = 0,
         temperature: float = 0.2,
         top_p: float = 0.95,
         repeat_penalty: float = 1.1,
+        # Transformer-specific parameters
+        torch_dtype: Optional[object] = None,  # torch.dtype
+        device: Optional[str] = None,
     ) -> None:
+        self.model_type = model_type.lower()
+        
+        if self.model_type == "llama-cpp":
+            self._init_llama_cpp(
+                model_path, n_ctx, n_threads, n_gpu_layers, 
+                temperature, top_p, repeat_penalty
+            )
+        elif self.model_type == "transformer":
+            self._init_transformer(
+                model_name, n_ctx, temperature, top_p, 
+                repeat_penalty, torch_dtype, device
+            )
+        else:
+            raise ValueError(f"Unsupported model_type: {model_type}. Use 'llama-cpp' or 'transformer'")
+
+    def _init_llama_cpp(
+        self,
+        model_path: Optional[str],
+        n_ctx: int,
+        n_threads: Optional[int],
+        n_gpu_layers: int,
+        temperature: float,
+        top_p: float,
+        repeat_penalty: float,
+    ):
         try:
             from llama_cpp import Llama  # type: ignore
         except ImportError as exc:
             raise RuntimeError(
-                "The optional dependency 'llama-cpp-python' is required for LocalLLM. "
+                "The optional dependency 'llama-cpp-python' is required for LocalLLM with llama-cpp type. "
                 "Install it via `pip install llama-cpp-python` or run the tooling with `--no-llm` / "
                 "set SEMINDEX_LLM_AUTO_DOWNLOAD=0 to skip local generation."
             ) from exc
 
         self.model_path = model_path or DEFAULT_LLM_PATH
-        self._ensure_model()
+        self._ensure_model_llama()
 
         self.temperature = temperature
         self.top_p = top_p
@@ -81,6 +115,82 @@ class LocalLLM:
             n_gpu_layers=n_gpu_layers,  # 0 for pure CPU
             logits_all=False,
             verbose=False,
+        )
+        
+        # Store model type specific methods
+        self._generate_method = self._generate_llama_cpp
+
+    def _init_transformer(
+        self,
+        model_name: Optional[str],
+        n_ctx: int,
+        temperature: float,
+        top_p: float,
+        repeat_penalty: float,
+        torch_dtype: Optional[object],
+        device: Optional[str],
+    ):
+        try:
+            from .transformer_llm import TransformerLLM
+        except ImportError as exc:
+            raise RuntimeError(
+                "The optional dependencies for transformer models are required. "
+                "Install them via `pip install transformers torch`."
+            ) from exc
+        
+        # If no model name provided, use TinyLlama as default
+        if model_name is None:
+            model_name = "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
+        
+        self.client = TransformerLLM(
+            model_name=model_name,
+            n_ctx=n_ctx,
+            temperature=temperature,
+            top_p=top_p,
+            repetition_penalty=repeat_penalty,
+            torch_dtype=torch_dtype,
+            device=device,
+        )
+        
+        # Store model type specific methods
+        self._generate_method = self._generate_transformer
+
+    def _generate_llama_cpp(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        context_chunks: Optional[Iterable[str]] = None,
+        max_tokens: int = 512,
+        stop: Optional[List[str]] = None,
+    ) -> str:
+        prompt = self.build_prompt(system_prompt, user_prompt, context_chunks)
+
+        result = self.client(
+            prompt,
+            max_tokens=max_tokens,
+            temperature=self.temperature,
+            top_p=self.top_p,
+            repeat_penalty=self.repeat_penalty,
+            stop=stop or ["</s>", "<|user|>", "<|system|>", "<|context|>"],
+        )
+        # llama-cpp returns a dict with 'choices'
+        text = result["choices"][0]["text"] if result and "choices" in result else ""
+        return text.strip()
+
+    def _generate_transformer(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        context_chunks: Optional[Iterable[str]] = None,
+        max_tokens: int = 512,
+        stop: Optional[List[str]] = None,
+    ) -> str:
+        return self.client.generate(
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            context_chunks=context_chunks,
+            max_tokens=max_tokens,
+            stop=stop,
         )
 
     def build_prompt(
@@ -103,7 +213,7 @@ class LocalLLM:
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
-    def _ensure_model(self) -> None:
+    def _ensure_model_llama(self) -> None:
         if os.path.exists(self.model_path):
             if DEFAULT_LLM_SHA256:
                 self._verify_checksum(self.model_path, DEFAULT_LLM_SHA256)
@@ -174,16 +284,6 @@ class LocalLLM:
         max_tokens: int = 512,
         stop: Optional[List[str]] = None,
     ) -> str:
-        prompt = self.build_prompt(system_prompt, user_prompt, context_chunks)
-
-        result = self.client(
-            prompt,
-            max_tokens=max_tokens,
-            temperature=self.temperature,
-            top_p=self.top_p,
-            repeat_penalty=self.repeat_penalty,
-            stop=stop or ["</s>", "<|user|>", "<|system|>", "<|context|>"],
+        return self._generate_method(
+            system_prompt, user_prompt, context_chunks, max_tokens, stop
         )
-        # llama-cpp returns a dict with 'choices'
-        text = result["choices"][0]["text"] if result and "choices" in result else ""
-        return text.strip()

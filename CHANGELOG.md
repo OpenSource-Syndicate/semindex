@@ -11,12 +11,18 @@
   - `_discover_patterns()`: Detects architectural patterns (testing, configuration, API, data layer)
 - Added `PlanningRule` dataclass for declarative section planning rules
 - Refactored `generate_plan()` to support both rule-based and index-discovered sections
+- Added comprehensive test suite for language adapters, hybrid search, and CLI functionality
+- Implemented graph generation capabilities (module, adapter, pipeline graphs and code statistics)
+- Added call graph analysis with `--callers` and `--callees` options to the `graph` command
+- Introduced AI-powered commands for code understanding and generation (ai subcommand with chat, explain, suggest, generate, docs, bugs, refactor, and tests)
+- Added new test file `test_ai_commands.py` for testing AI command functionality
 
 ### Changed
 - Autoplan now generates documentation sections dynamically from indexed codebase rather than hardcoded templates
 - `generate_plan()` accepts optional `index_dir` parameter to enable index-based discovery
 - Improved code organization with separation of concerns in planning logic
-- README.md updated to reflect index-driven documentation planning
+- README.md updated to reflect index-driven documentation planning and new AI commands
+- Enhanced test coverage with additional test cases for RRF edge cases and CLI functionality
 
 ### Fixed
 - Fixed missing `cmd_query` function that was causing NameError in CLI
@@ -91,6 +97,7 @@
 - Basic chunking by function/class boundaries
 - SQLite for metadata storage
 
-[Unreleased]: https://github.com/OpenSource-Syndicate/semindex/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/OpenSource-Syndicate/semindex/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/OpenSource-Syndicate/semindex/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/OpenSource-Syndicate/semindex/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/OpenSource-Syndicate/semindex/releases/tag/v0.1.0

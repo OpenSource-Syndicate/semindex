@@ -32,7 +32,7 @@ The final phase focuses on refining the user experience, improving performance, 
 - [x] Better code embeddings (code-specific model) - Improved support for code-specific models added. Recommended models include `microsoft/codebert-base`, `Salesforce/codet5-base`, and `BAAI/bge-large-en-v1.5`
 - [x] External docs indexing and retrieval (PyPI/local) with merged ranking
 - [x] Public Python API wrappers (Indexer, Searcher) for programmatic indexing and querying
-- [ ] Who-calls/used-by graph exploration
+- [x] Who-calls/used-by graph exploration - Implemented with `--callers` and `--callees` options in the `graph` command
 - [x] Reranking with keyword + structure signals (via Reciprocal Rank Fusion)
 - [x] Keyword search integration
 - [x] Graph search integration
@@ -40,6 +40,11 @@ The final phase focuses on refining the user experience, improving performance, 
 - [x] Advanced semantic chunking (CAST algorithm)
 - [x] Documentation generation pipeline (LLM-backed auto planning + Mermaid exports)
 - [x] Language adapter registry *(auto-registration + optional Tree-sitter JavaScript adapter)*
+- [x] AI-powered commands for code understanding and generation - Added `ai` command with subcommands for chat, explain, suggest, generate, docs, bugs, refactor, and tests
+- [x] Call graph analysis - Implemented through the graph command with `--callers` and `--callees` options
 - [ ] Language injection support *(extended symbol extraction for remaining languages, UI integrations pending)*
 - [ ] Web/GUI interface
 - [ ] Performance benchmarking
+- [ ] Enhanced visualization tools for code analysis
+- [ ] IDE integration plugins (VSCode, Vim, etc.)
+- [ ] Real-time indexing as files change
