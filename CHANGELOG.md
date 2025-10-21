@@ -1,10 +1,41 @@
 # Changelog
 
-## [Unreleased]
+## [0.4.0] - 2025-10-21
 
 ### Added
 - Implemented `cmd_query()` CLI function for semantic search with support for hybrid search and documentation merging
 - Enhanced autoplan with index-driven section discovery:
+- Added enhanced contextual code generation system with multi-modal context awareness
+  - New module `context_enhancer.py` with `DocumentationExtractor`, `TypeExtractor`, and `StructureAnalyzer`
+  - Enhanced `ContextAggregator` with multi-modal context gathering (documentation, comments, types, structure)
+  - Added call graph integration for cross-file dependency awareness
+  - Implemented AST-based fine-grained context extraction instead of simple line-based context
+  - Added `GeneratedCode` class to represent generated code with metadata
+  - New `CodeValidator` for comprehensive code validation
+  - New `ExecutionGuidedGenerator` for refinement based on validation feedback
+- Added intent recognition and task decomposition capabilities
+  - New module `intent_analyzer.py` with `IntentClassifier` that categorizes user requests
+  - Added `IntentType` enum with categories: IMPLEMENTATION, REFACTORING, DEBUGGING, DOCUMENTATION, TESTING, ANALYSIS
+  - Implemented `TaskDecomposer` to break complex requests into subtasks
+  - Enhanced generation prompts based on detected intent
+- Added advanced pattern recognition and template-based generation
+  - New module `pattern_analyzer.py` with `PatternExtractor`, `PatternMatcher`, and `TemplateGenerator`
+  - Implemented `TemplateRegistry` to store and manage code templates from the user's codebase
+  - Added pattern-based suggestions to enhance code generation
+- Added interactive refinement capabilities
+  - New `InteractiveCodeRefiner` class for iterative improvement through user feedback
+  - Added conversation memory to maintain context across interactions
+  - Implemented feedback incorporation mechanism
+- Added real-time context update system
+  - New module `context_watcher.py` with `ContextFileWatcher` using watchdog library
+  - Enhanced `ContextCache` with file dependency tracking and invalidation
+  - Added debouncing mechanism to avoid excessive updates during rapid typing
+- Added new CLI command `ai generate-context` that leverages enhanced contextual generation
+  - Accepts file path, line number, and natural language request
+  - Uses multi-modal context and intent recognition for better generation
+  - Provides enhanced contextual awareness compared to basic generation
+- Enhanced existing `ContextAwareCodeGenerator` with intent recognition, pattern matching, and execution feedback
+- Added new dependencies: `watchdog` for file watching capabilities
   - `_discover_key_modules()`: Identifies core modules by symbol count
   - `_discover_key_classes()`: Finds important classes by structural complexity
   - `_discover_key_functions()`: Locates critical functions via call graph analysis
@@ -125,7 +156,7 @@
 - Basic chunking by function/class boundaries
 - SQLite for metadata storage
 
-[Unreleased]: https://github.com/OpenSource-Syndicate/semindex/compare/v0.3.0...HEAD
+[0.4.0]: https://github.com/OpenSource-Syndicate/semindex/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/OpenSource-Syndicate/semindex/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/OpenSource-Syndicate/semindex/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/OpenSource-Syndicate/semindex/releases/tag/v0.1.0

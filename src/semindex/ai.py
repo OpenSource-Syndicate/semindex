@@ -13,6 +13,14 @@ from .local_llm import LocalLLM
 from .embed import Embedder
 from .model import Symbol
 from .store import DB_NAME
+from .context_generator import (
+    generate_code_with_context, 
+    ContextAggregator, 
+    ContextCache,
+    ContextAwareCodeGenerator,
+    ExecutionGuidedGenerator,
+    InteractiveCodeRefiner
+)
 
 
 class ConversationMemory:
@@ -741,3 +749,61 @@ def cmd_ai_tests(args: argparse.Namespace) -> None:
         print(test_code)
     else:
         print(f"Could not find symbol: {args.target}")
+
+
+def cmd_generate_context(args: argparse.Namespace) -> None:
+    """Generate code with full context awareness."""
+    if not args.file_path or not args.request:
+        print("Error: Please specify both --file-path and --request")
+        return
+    
+    if args.line_number <= 0:
+        print("Error: Please specify a valid line number (--line-number)")
+        return
+    
+    try:
+        # Validate file exists
+        if not os.path.exists(args.file_path):
+            print(f"Error: File {args.file_path} does not exist")
+            return
+            
+        print(f"Generating code for {args.file_path}:{args.line_number}...")
+
+        # Use the new context-aware generation
+        result = generate_code_with_context(
+            index_dir=args.index_dir,
+            file_path=args.file_path,
+            line_no=args.line_number,
+            user_request=args.request
+        )
+        
+        print("Generated code:")
+        print("=" * 50)
+        print(result)
+        
+        if args.apply:
+            # Apply the generation to the file
+            print(f"\nApplying changes to {args.file_path}...")
+            _apply_contextual_generation_to_file(args.file_path, args.line_number, result)
+    
+    except Exception as e:
+        print(f"Error during contextual generation: {e}")
+
+
+def _apply_contextual_generation_to_file(file_path: str, line_number: int, new_code: str):
+    """Apply the generated code to the specified file at the given line."""
+    try:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            lines = f.readlines()
+        
+        # Insert the new code at the specified line
+        # Adjust for 0-based indexing
+        insert_at = min(line_number - 1, len(lines))
+        lines.insert(insert_at, new_code + '\n')
+        
+        with open(file_path, 'w', encoding='utf-8') as f:
+            f.writelines(lines)
+        
+        print(f"Successfully applied changes to {file_path}")
+    except Exception as e:
+        print(f"Error applying changes: {e}")

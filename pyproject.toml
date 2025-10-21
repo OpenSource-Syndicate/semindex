@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "semindex"
-version = "0.1.0"
+version = "0.4.0"
 description = "Local semantic codebase indexer (Python-only, CPU-only)"
 authors = [{ name = "OpenSource Syndicate" }]
 readme = "README.md"
@@ -23,6 +23,8 @@ dependencies = [
     "html2text==2024.2.26",
     "toml>=0.10.2",
     "llama-cpp-python>=0.3.16",
+    "colorama>=0.4.6",
+    "watchdog>=4.0.0",
 ]
 
 [project.optional-dependencies]

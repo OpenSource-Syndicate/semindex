@@ -45,6 +45,7 @@ from .ai import (
     cmd_ai_find_bugs,
     cmd_ai_refactor,
     cmd_ai_tests,
+    cmd_generate_context,
 )
 
 # Import new AI project planning commands
@@ -182,7 +183,9 @@ def cmd_index(args: argparse.Namespace):
     all_texts: List[str] = []
     file_hashes: List[Tuple[str, str, str]] = []
 
-    for language_name, adapter, path in targets:
+    # Process files with progress bar
+    from tqdm import tqdm
+    for language_name, adapter, path in tqdm(targets, desc="Processing files", unit="file"):
         try:
             source = read_text(path)
         except Exception as exc:
@@ -272,6 +275,7 @@ def cmd_index(args: argparse.Namespace):
         symbol_ids = list(range(first_id, last_id + 1)) if count > 0 else []
 
         if all_texts:
+            # Process embeddings with progress bar
             vecs = embedder.encode(all_texts, batch_size=args.batch)
             add_vectors(index_path, con, symbol_ids, vecs)
 
@@ -288,7 +292,8 @@ def cmd_index(args: argparse.Namespace):
         with db_conn(db_path) as con:
             all_symbols = get_all_symbols_for_keyword_index(con)
             # Add content to each symbol based on the source files
-            for symbol in all_symbols:
+            print("Indexing symbols in keyword search...")
+            for symbol in tqdm(all_symbols, desc="Indexing keywords", unit="symbol"):
                 try:
                     with open(symbol["path"], 'r', encoding='utf-8') as f:
                         source = f.read()
@@ -324,6 +329,10 @@ def cmd_index(args: argparse.Namespace):
 
 def cmd_query(args: argparse.Namespace):
     """Query the semantic index."""
+    import colorama
+    from colorama import Fore, Style
+    colorama.init(autoreset=True)  # Initialize colorama
+    
     from .search import search_similar
     
     index_dir = os.path.abspath(args.index_dir)
@@ -339,7 +348,7 @@ def cmd_query(args: argparse.Namespace):
         else:
             results = search_similar(index_dir, qvec, top_k=args.top_k)
     except Exception as e:
-        print(f"Search failed: {e}")
+        print(f"{Fore.RED}Search failed: {e}{Style.RESET_ALL}")
         return
     
     # Handle docs retrieval if requested
@@ -356,7 +365,7 @@ def cmd_query(args: argparse.Namespace):
             code_scores = [r[0] for r in results] or [1.0]
             doc_scores = [r[0] for r in doc_results] or [1.0]
             max_code = max(code_scores) if code_scores else 1.0
-            max_doc = max(doc_scores) if doc_scores else 1.0
+            max_doc = max(doc_scores) if doc_results else 0.0
             for r in results:
                 merged.append(((1.0 - args.docs_weight) * (r[0] / (max_code or 1.0)), ("code", r)))
             for r in doc_results:
@@ -366,18 +375,18 @@ def cmd_query(args: argparse.Namespace):
             results = [r for _score, (_rtype, r) in merged]
     
     if not results:
-        print("No results found.")
+        print(f"{Fore.YELLOW}No results found.{Style.RESET_ALL}")
         return
     
-    print(f"Found {len(results)} results for query: '{args.query}'")
+    print(f"{Fore.CYAN}Found {len(results)} results for query: '{args.query}'{Style.RESET_ALL}")
     print()
     
     for i, (score, symbol_id, symbol_info) in enumerate(results, 1):
         path, name, kind, start_line, end_line, signature = symbol_info[:6]
-        print(f"{i}. {name} ({kind}) in {path}:{start_line}-{end_line}")
+        print(f"{Fore.GREEN}{i}. {Fore.BLUE}{name} {Fore.MAGENTA}({kind}) {Fore.RESET}in {Fore.CYAN}{path}:{start_line}-{end_line}{Style.RESET_ALL}")
         if signature:
-            print(f"   Signature: {signature}")
-        print(f"   Score: {score:.4f}")
+            print(f"   {Fore.YELLOW}Signature: {Fore.WHITE}{signature}{Style.RESET_ALL}")
+        print(f"   {Fore.CYAN}Score: {Fore.LIGHTYELLOW_EX}{score:.4f}{Style.RESET_ALL}")
         print()
 
 
@@ -517,6 +526,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p_graph.add_argument("--callees", type=str, help="Show callees of fully qualified symbol name")
     p_graph.set_defaults(func=cmd_graph)
 
+    # Explore command parser
+    p_explore = sub.add_parser("explore", help="Interactive exploration of the codebase")
+    p_explore.add_argument("--index-dir", default=".semindex", help="Index directory (default: .semindex)")
+    p_explore.set_defaults(func=cmd_explore)
+
     # AI command parser
     p_ai = sub.add_parser("ai", help="AI-powered commands for code understanding and generation")
     ai_sub = p_ai.add_subparsers(dest="ai_cmd", required=True)
@@ -608,6 +622,18 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p_ai_tests.add_argument("--max-tokens", type=int, default=512, help="Maximum tokens for LLM response")
     p_ai_tests.add_argument("--hybrid", action="store_true", help="Use hybrid search for context retrieval")
     p_ai_tests.set_defaults(func=cmd_ai_tests)
+    
+    # AI generate-context command
+    p_ai_gen_ctx = ai_sub.add_parser("generate-context", help="Generate code with full context awareness")
+    p_ai_gen_ctx.add_argument("--file-path", required=True, help="Path to the target file")
+    p_ai_gen_ctx.add_argument("--line-number", type=int, required=True, help="Line number to generate code for")
+    p_ai_gen_ctx.add_argument("--request", required=True, help="Natural language request for code generation")
+    p_ai_gen_ctx.add_argument("--index-dir", default=".semindex", help="Index directory (default: .semindex)")
+    p_ai_gen_ctx.add_argument("--model", default=os.environ.get("SEMINDEX_MODEL", "microsoft/codebert-base"))
+    p_ai_gen_ctx.add_argument("--llm-path", help="Path to local LLM model")
+    p_ai_gen_ctx.add_argument("--max-tokens", type=int, default=512, help="Maximum tokens for LLM response")
+    p_ai_gen_ctx.add_argument("--apply", action="store_true", help="Apply the generated code to the file")
+    p_ai_gen_ctx.set_defaults(func=cmd_generate_context)
 
     # AI Project Planning command
     p_ai_plan = sub.add_parser("ai-plan", help="AI-powered project planning and execution")
@@ -888,6 +914,206 @@ def cmd_perplexica_explain(args: argparse.Namespace) -> None:
     
     except Exception as e:
         print(f"Error during explanation: {e}")
+
+
+def cmd_explore(args: argparse.Namespace) -> None:
+    """Interactive exploration of the codebase."""
+    import colorama
+    from colorama import Fore, Style
+    colorama.init(autoreset=True)
+    
+    from .search import Searcher
+    import sys
+    
+    # Try to enable readline for command history and completion
+    try:
+        import readline
+        # Set up command history
+        import os
+        histfile = os.path.join(os.path.expanduser("~"), ".semindex_history")
+        try:
+            readline.read_history_file(histfile)
+            # default history len is -1 (infinite), which may grow unruly
+            readline.set_history_length(1000)
+        except FileNotFoundError:
+            pass
+        import atexit
+        atexit.register(readline.write_history_file, histfile)
+        
+        # Set up tab completion
+        import rlcompleter
+        readline.parse_and_bind("tab: complete")
+        
+        # Define a custom completer to complete our commands
+        class CommandCompleter:
+            def __init__(self, commands):
+                self.commands = commands
+                
+            def complete(self, text, state):
+                """Custom completer for our commands"""
+                results = [cmd for cmd in self.commands if cmd.startswith(text)] + [None]
+                return results[state]
+        
+        # Set up our custom commands for completion
+        commands = ['help', 'suggest', 'query', 'quit', 'exit']
+        completer = CommandCompleter(commands)
+        readline.set_completer(completer.complete)
+        
+    except ImportError:
+        # readline is not available on some platforms (e.g. Windows)
+        # We'll just continue without it
+        pass
+    
+    print(f"{Fore.CYAN}Starting interactive exploration...{Style.RESET_ALL}")
+    print(f"{Fore.YELLOW}Type 'help' for commands, 'quit' or 'exit' to exit.{Style.RESET_ALL}")
+    print()
+    
+    searcher = Searcher(index_dir=args.index_dir)
+    
+    # Common query suggestions
+    suggestions = [
+        "find functions that handle authentication",
+        "show me all database queries",
+        "find error handling patterns", 
+        "show classes that inherit from BaseClass",
+        "find code related to file upload",
+        "show me API endpoints",
+        "find logging statements",
+        "show code with TODO comments"
+    ]
+    
+    while True:
+        try:
+            query = input(f"{Fore.GREEN}semindex> {Style.RESET_ALL}").strip()
+            
+            if query.lower() in ['quit', 'exit', 'q']:
+                print(f"{Fore.YELLOW}Goodbye!{Style.RESET_ALL}")
+                break
+            elif query.lower() == 'help':
+                print(f"{Fore.CYAN}Commands:{Style.RESET_ALL}")
+                print(f"  {Fore.MAGENTA}query <text>{Style.RESET_ALL} - Search for code using natural language")
+                print(f"  {Fore.MAGENTA}query -h{Style.RESET_ALL} - Show query options")
+                print(f"  {Fore.MAGENTA}suggest{Style.RESET_ALL} - Show common query suggestions")
+                print(f"  {Fore.MAGENTA}quit/exit{Style.RESET_ALL} - Exit the interactive mode")
+                print(f"  {Fore.MAGENTA}help{Style.RESET_ALL} - Show this help message")
+                print()
+            elif query.lower() == 'suggest':
+                print(f"{Fore.CYAN}Common query suggestions:{Style.RESET_ALL}")
+                for i, suggestion in enumerate(suggestions, 1):
+                    print(f"  {Fore.MAGENTA}{i}.{Style.RESET_ALL} {suggestion}")
+                print()
+            elif query.startswith('query -h'):
+                print(f"{Fore.CYAN}Query options:{Style.RESET_ALL}")
+                print(f"  {Fore.MAGENTA}--top-k N{Style.RESET_ALL} - Number of results to return (default: 5)")
+                print(f"  {Fore.MAGENTA}--hybrid{Style.RESET_ALL} - Use hybrid search (vector + keyword)")
+                print(f"  {Fore.MAGENTA}--include-docs{Style.RESET_ALL} - Include external docs in results")
+                print()
+            elif query.startswith('query '):
+                # Extract actual query text after 'query' command
+                actual_query = query[6:].strip()
+                if not actual_query:
+                    print(f"{Fore.RED}Please provide a query after 'query'{Style.RESET_ALL}")
+                    continue
+                
+                # Default search parameters
+                top_k = 5
+                hybrid = False
+                include_docs = False
+                
+                # Parse potential flags in the query
+                parts = actual_query.split()
+                i = 0
+                while i < len(parts):
+                    if parts[i] == '--top-k' and i + 1 < len(parts):
+                        try:
+                            top_k = int(parts[i + 1])
+                            parts = parts[:i] + parts[i + 2:]
+                        except ValueError:
+                            print(f"{Fore.RED}Invalid value for --top-k, using default 5{Style.RESET_ALL}")
+                            i += 1
+                    elif parts[i] == '--hybrid':
+                        hybrid = True
+                        parts = parts[:i] + parts[i + 1:]
+                    elif parts[i] == '--include-docs':
+                        include_docs = True
+                        parts = parts[:i] + parts[i + 1:]
+                    else:
+                        i += 1
+                
+                # Join remaining parts as the actual query
+                actual_query = ' '.join(parts).strip()
+                
+                if not actual_query:
+                    print(f"{Fore.RED}Please provide a query after 'query'{Style.RESET_ALL}")
+                    continue
+                
+                print(f"{Fore.CYAN}Searching for: '{actual_query}'...{Style.RESET_ALL}")
+                
+                try:
+                    results = searcher.query(
+                        actual_query,
+                        top_k=top_k,
+                        hybrid=hybrid,
+                        include_docs=include_docs
+                    )
+                    
+                    if not results:
+                        print(f"{Fore.YELLOW}No results found.{Style.RESET_ALL}")
+                        # Provide related suggestions
+                        print(f"{Fore.CYAN}Maybe try one of these related searches:{Style.RESET_ALL}")
+                        for i in range(min(3, len(suggestions))):
+                            print(f"  {Fore.MAGENTA}- {suggestions[i]}{Style.RESET_ALL}")
+                        print()
+                    else:
+                        print(f"{Fore.CYAN}Found {len(results)} results:{Style.RESET_ALL}")
+                        print()
+                        
+                        for i, (score, symbol_id, symbol_info) in enumerate(results, 1):
+                            path, name, kind, start_line, end_line, signature = symbol_info[:6]
+                            print(f"{Fore.GREEN}{i}. {Fore.BLUE}{name} {Fore.MAGENTA}({kind}) {Fore.RESET}in {Fore.CYAN}{path}:{start_line}-{end_line}{Style.RESET_ALL}")
+                            if signature:
+                                print(f"   {Fore.YELLOW}Signature: {Fore.WHITE}{signature}{Style.RESET_ALL}")
+                            print(f"   {Fore.CYAN}Score: {Fore.LIGHTYELLOW_EX}{score:.4f}{Style.RESET_ALL}")
+                            print()
+                except Exception as e:
+                    print(f"{Fore.RED}Search failed: {e}{Style.RESET_ALL}")
+            elif query:
+                # Treat as a simple query if it doesn't start with any command
+                print(f"{Fore.CYAN}Searching for: '{query}'...{Style.RESET_ALL}")
+                
+                try:
+                    results = searcher.query(query, top_k=5)
+                    
+                    if not results:
+                        print(f"{Fore.YELLOW}No results found.{Style.RESET_ALL}")
+                        # Provide related suggestions
+                        print(f"{Fore.CYAN}Maybe try one of these related searches:{Style.RESET_ALL}")
+                        for i in range(min(3, len(suggestions))):
+                            print(f"  {Fore.MAGENTA}- {suggestions[i]}{Style.RESET_ALL}")
+                        print()
+                    else:
+                        print(f"{Fore.CYAN}Found {len(results)} results:{Style.RESET_ALL}")
+                        print()
+                        
+                        for i, (score, symbol_id, symbol_info) in enumerate(results, 1):
+                            path, name, kind, start_line, end_line, signature = symbol_info[:6]
+                            print(f"{Fore.GREEN}{i}. {Fore.BLUE}{name} {Fore.MAGENTA}({kind}) {Fore.RESET}in {Fore.CYAN}{path}:{start_line}-{end_line}{Style.RESET_ALL}")
+                            if signature:
+                                print(f"   {Fore.YELLOW}Signature: {Fore.WHITE}{signature}{Style.RESET_ALL}")
+                            print(f"   {Fore.CYAN}Score: {Fore.LIGHTYELLOW_EX}{score:.4f}{Style.RESET_ALL}")
+                            print()
+                except Exception as e:
+                    print(f"{Fore.RED}Search failed: {e}{Style.RESET_ALL}")
+            else:
+                # Empty query, just continue the loop
+                continue
+                
+        except KeyboardInterrupt:
+            print(f"\n{Fore.YELLOW}Goodbye!{Style.RESET_ALL}")
+            break
+        except EOFError:
+            print(f"\n{Fore.YELLOW}Goodbye!{Style.RESET_ALL}")
+            break
 
 
 def main():

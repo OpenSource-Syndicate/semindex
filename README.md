@@ -19,6 +19,12 @@ languages) using AST + embeddings.
 - Metadata/XRef via SQLite (basic)
 - External library documentation indexing (PyPI/local site-packages) stored in a separate FAISS + SQLite space and merged at query time
 - AI-powered commands for code understanding and generation (chat, explain, suggest, generate, docs, bugs, refactor, tests)
+- Enhanced contextual code generation with multi-modal context (documentation, types, structure)
+- Intent recognition and task decomposition for better code generation
+- Pattern-based generation using templates from your own codebase
+- Execution-guided generation with validation and refinement
+- Interactive refinement capabilities with conversation-based feedback
+- Real-time context updates with file watching system
 - AI-powered project planning and execution (create, execute, and manage complex software projects)
 - Perplexica-powered search capabilities (web search, documentation search, and hybrid search modes)
 - Configuration system with TOML-based config file
@@ -130,6 +136,7 @@ semindex ai chat --index-dir .semindex  # Interactive chat about your code
 semindex ai explain function_name --index-dir .semindex  # Explain a function/class
 semindex ai suggest --index-dir .semindex  # Suggest improvements
 semindex ai generate "create a function to add two numbers" --index-dir .semindex  # Generate code
+semindex ai generate-context --file-path file.py --line-number 10 --request "add a method" --index-dir .semindex  # Generate code with rich context awareness
 semindex ai docs function_name --index-dir .semindex  # Generate documentation
 semindex ai bugs function_name --index-dir .semindex  # Find potential bugs
 semindex ai refactor function_name --index-dir .semindex  # Suggest refactoring
