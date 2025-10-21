@@ -47,6 +47,16 @@ from .ai import (
     cmd_ai_tests,
 )
 
+# Import new AI project planning commands
+from .project_planner import ProjectPlanner
+from .task_manager import TaskManager, TaskStatus
+from .development_workflow import DevelopmentWorkflow
+from .testing_framework import TestingFramework
+from .integration_manager import IntegrationManager
+from .perplexica_adapter import PerplexicaSearchAdapter
+from .focus_modes import FocusMode, FocusModeManager
+from .ai_implementation_assistant import AIImplementationAssistant
+
 
 # Re-export helpers expected by tests for monkeypatching.
 iter_python_files = _iter_python_files
@@ -599,7 +609,285 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p_ai_tests.add_argument("--hybrid", action="store_true", help="Use hybrid search for context retrieval")
     p_ai_tests.set_defaults(func=cmd_ai_tests)
 
+    # AI Project Planning command
+    p_ai_plan = sub.add_parser("ai-plan", help="AI-powered project planning and execution")
+    ai_plan_sub = p_ai_plan.add_subparsers(dest="ai_plan_cmd", required=True)
+    
+    # Plan command
+    p_ai_plan_create = ai_plan_sub.add_parser("create", help="Create a project plan from description or codebase")
+    p_ai_plan_create.add_argument("project_description", help="Description of the project to plan")
+    p_ai_plan_create.add_argument("--index-dir", default=".semindex", help="Index directory (default: .semindex)")
+    p_ai_plan_create.add_argument("--project-name", help="Name for the project")
+    p_ai_plan_create.add_argument("--analyze-codebase", action="store_true", 
+                                 help="Analyze existing codebase to create plan")
+    p_ai_plan_create.add_argument("--output", help="Output file to save the plan (JSON format)")
+    p_ai_plan_create.set_defaults(func=cmd_ai_plan_create)
+    
+    # Execute command
+    p_ai_plan_execute = ai_plan_sub.add_parser("execute", help="Execute a planned project")
+    p_ai_plan_execute.add_argument("--index-dir", default=".semindex", help="Index directory (default: .semindex)")
+    p_ai_plan_execute.add_argument("--plan-file", help="Path to project plan file (JSON format)")
+    p_ai_plan_execute.add_argument("--phase", help="Execute a specific phase of the project")
+    p_ai_plan_execute.add_argument("--generate-tests", action="store_true", 
+                                  help="Generate tests for components after implementation")
+    p_ai_plan_execute.add_argument("--integrate", action="store_true", 
+                                  help="Create integration layer after implementation")
+    p_ai_plan_execute.set_defaults(func=cmd_ai_plan_execute)
+    
+    # Manage command
+    p_ai_plan_manage = ai_plan_sub.add_parser("manage", help="Manage project tasks and progress")
+    p_ai_plan_manage.add_argument("--index-dir", default=".semindex", help="Index directory (default: .semindex)")
+    p_ai_plan_manage.add_argument("--plan-file", help="Path to project plan file (JSON format)")
+    p_ai_plan_manage.add_argument("--report", action="store_true", 
+                                 help="Generate project progress report")
+    p_ai_plan_manage.add_argument("--task", help="Specific task to manage")
+    p_ai_plan_manage.add_argument("--status", choices=["pending", "in_progress", "completed", "blocked", "cancelled"],
+                                 help="Set status for a task")
+    p_ai_plan_manage.set_defaults(func=cmd_ai_plan_manage)
+    
+    # Perplexica-powered search command
+    p_perplexica = sub.add_parser("perplexica", help="Perplexica-powered search capabilities")
+    perplexica_sub = p_perplexica.add_subparsers(dest="perplexica_cmd", required=True)
+    
+    # Perplexica search command
+    p_perplexica_search = perplexica_sub.add_parser("search", help="Search using Perplexica API with various focus modes")
+    p_perplexica_search.add_argument("query", help="Search query")
+    p_perplexica_search.add_argument("--index-dir", default=".semindex", help="Index directory (default: .semindex)")
+    p_perplexica_search.add_argument("--config-path", help="Path to config.toml file (default: auto-detect)")
+    p_perplexica_search.add_argument("--focus-mode", 
+                                   choices=["codeSearch", "docSearch", "webSearch", "academicSearch", "librarySearch", "youtubeSearch", "redditSearch", "hybridSearch"],
+                                   default="hybridSearch",
+                                   help="Focus mode for search (default: hybridSearch)")
+    p_perplexica_search.add_argument("--top-k", type=int, default=5, help="Number of results to return")
+    p_perplexica_search.add_argument("--web-results-count", type=int, default=3, help="Number of web results to include in hybrid search")
+    p_perplexica_search.set_defaults(func=cmd_perplexica_search)
+    
+    # Perplexica explain command
+    p_perplexica_explain = perplexica_sub.add_parser("explain", help="Explain a topic using internal and external knowledge")
+    p_perplexica_explain.add_argument("topic", help="Topic to explain")
+    p_perplexica_explain.add_argument("--index-dir", default=".semindex", help="Index directory (default: .semindex)")
+    p_perplexica_explain.add_argument("--config-path", help="Path to config.toml file (default: auto-detect)")
+    p_perplexica_explain.add_argument("--focus-mode", 
+                                    choices=["codeSearch", "docSearch", "webSearch", "academicSearch", "librarySearch", "youtubeSearch", "redditSearch", "hybridSearch"],
+                                    default="hybridSearch",
+                                    help="Focus mode for explanation (default: hybridSearch)")
+    p_perplexica_explain.set_defaults(func=cmd_perplexica_explain)
+
     return p
+
+
+def cmd_ai_plan_create(args: argparse.Namespace) -> None:
+    """Create a project plan from description or by analyzing codebase."""
+    project_description = args.project_description
+    project_name = args.project_name or "AI-Generated Project"
+    
+    planner = ProjectPlanner(index_dir=args.index_dir)
+    
+    if args.analyze_codebase:
+        print(f"Analyzing codebase to create project plan for: {project_description}")
+        plan = planner.generate_plan_from_codebase(repo_root=os.getcwd(), project_description=project_description)
+    else:
+        print(f"Creating project plan for: {project_description}")
+        plan = planner.generate_plan_from_description(project_description, project_name)
+    
+    print(f"\nGenerated project plan: {plan.name}")
+    print(f"Description: {plan.description}")
+    print(f"Phases: {len(plan.phases)}")
+    print(f"Components: {len(plan.components)}")
+    
+    if args.output:
+        planner.save_plan(plan, args.output)
+        print(f"Plan saved to: {args.output}")
+    else:
+        # Print a summary of the plan
+        for phase in plan.phases:
+            print(f"\nPhase: {phase.name} ({phase.phase_type.value})")
+            print(f"  Description: {phase.description}")
+            print(f"  Tasks: {len(phase.tasks)}")
+            for task in phase.tasks[:3]:  # Show first 3 tasks
+                print(f"    - {task.name}: {task.description[:60]}...")
+            if len(phase.tasks) > 3:
+                print(f"    ... and {len(phase.tasks) - 3} more tasks")
+
+
+def cmd_ai_plan_execute(args: argparse.Namespace) -> None:
+    """Execute a planned project."""
+    if not args.plan_file:
+        print("Error: --plan-file is required to execute a project")
+        return
+    
+    # Load the plan
+    planner = ProjectPlanner(index_dir=args.index_dir)
+    try:
+        plan = planner.load_plan(args.plan_file)
+        print(f"Loaded project plan: {plan.name}")
+    except Exception as e:
+        print(f"Error loading plan from {args.plan_file}: {e}")
+        return
+    
+    # Create task manager and development workflow
+    task_manager = TaskManager(project_plan=plan)
+    dev_workflow = DevelopmentWorkflow(project_plan=plan, task_manager=task_manager, index_dir=args.index_dir)
+    
+    # Execute the plan
+    if args.phase:
+        print(f"Executing phase: {args.phase}")
+        success = dev_workflow.execute_phase(args.phase)
+    else:
+        print("Executing entire project plan...")
+        success = dev_workflow.execute_project()
+    
+    if success:
+        print("Project execution completed successfully")
+        
+        # Validate generated code
+        validation_errors = dev_workflow.validate_generated_code()
+        if not validation_errors:
+            print("✓ All generated code has valid syntax")
+        
+        # Generate tests if requested
+        if args.generate_tests:
+            print("Generating tests for components...")
+            testing_framework = TestingFramework(project_plan=plan, index_dir=args.index_dir)
+            test_files = testing_framework.generate_all_tests()
+            written_test_files = testing_framework.write_tests_to_files(test_files)
+            print(f"Generated {len(written_test_files)} test files")
+        
+        # Create integration if requested
+        if args.integrate:
+            print("Creating integration layer...")
+            integration_manager = IntegrationManager(project_plan=plan, index_dir=args.index_dir)
+            integration_manager.generate_integration_layer()
+            integration_manager.create_integration_test()
+            integration_manager.create_api_layer()
+            integration_manager.create_documentation()
+            
+            # Validate integration
+            validation_results = integration_manager.validate_integration()
+            if validation_results["valid"]:
+                print("✓ Integration validation successful")
+            else:
+                print("✗ Integration validation failed:")
+                for issue in validation_results["issues"]:
+                    print(f"  - {issue}")
+        
+        # Generate final task report
+        print("\n" + dev_workflow.generate_task_report())
+    else:
+        print("Project execution completed with errors")
+
+
+def cmd_ai_plan_manage(args: argparse.Namespace) -> None:
+    """Manage project tasks and progress."""
+    if not args.plan_file:
+        print("Error: --plan-file is required to manage a project")
+        return
+    
+    # Load the plan
+    planner = ProjectPlanner(index_dir=args.index_dir)
+    try:
+        plan = planner.load_plan(args.plan_file)
+        print(f"Loaded project plan: {plan.name}")
+    except Exception as e:
+        print(f"Error loading plan from {args.plan_file}: {e}")
+        return
+    
+    # Create task manager
+    task_manager = TaskManager(project_plan=plan)
+    
+    if args.report:
+        # Generate and print the progress report
+        report = task_manager.generate_report()
+        print(report)
+    elif args.task and args.status:
+        # Update the status of a specific task
+        status_map = {
+            "pending": TaskStatus.PENDING,
+            "in_progress": TaskStatus.IN_PROGRESS,
+            "completed": TaskStatus.COMPLETED,
+            "blocked": TaskStatus.BLOCKED,
+            "cancelled": TaskStatus.CANCELLED
+        }
+        status_enum = status_map.get(args.status)
+        
+        if status_enum:
+            if task_manager.mark_task_status(args.task, status_enum):
+                print(f"Updated task '{args.task}' status to '{args.status}'")
+            else:
+                print(f"Could not find task '{args.task}'")
+        else:
+            print(f"Invalid status: {args.status}")
+    else:
+        # Default: show a summary of tasks
+        pending_tasks = task_manager.get_pending_tasks()
+        in_progress_tasks = task_manager.get_in_progress_tasks()
+        completed_tasks = task_manager.get_completed_tasks()
+        
+        print(f"Task Summary:")
+        print(f"  Pending: {len(pending_tasks)}")
+        print(f"  In Progress: {len(in_progress_tasks)}")
+        print(f"  Completed: {len(completed_tasks)}")
+        
+        if in_progress_tasks:
+            print(f"\nIn Progress Tasks:")
+            for task in in_progress_tasks:
+                print(f"  - {task.task_name} ({task.percentage_complete}%)")
+        
+        if pending_tasks:
+            print(f"\nNext Task: {pending_tasks[0].task_name if pending_tasks else 'None'}")
+
+
+def cmd_perplexica_search(args: argparse.Namespace) -> None:
+    """Search using Perplexica API with various focus modes."""
+    # Initialize the RAG system with the new focus mode functionality
+    from .rag import retrieve_context_by_mode
+    
+    print(f"Searching with focus mode: {args.focus_mode}")
+    print(f"Query: {args.query}")
+    print(f"Config path: {args.config_path or 'auto-detect'}")
+    
+    try:
+        results = retrieve_context_by_mode(
+            index_dir=args.index_dir,
+            query=args.query,
+            focus_mode=args.focus_mode,
+            top_k=args.top_k,
+            config_path=args.config_path
+        )
+        
+        if not results:
+            print("No results found.")
+            return
+        
+        print(f"\nFound {len(results)} results:")
+        for i, (score, snippet) in enumerate(results, 1):
+            print(f"\n{i}. Score: {score:.3f}")
+            print(snippet[:1000] + ("..." if len(snippet) > 1000 else ""))  # Limit snippet display
+            print("-" * 80)
+    
+    except Exception as e:
+        print(f"Error during search: {e}")
+
+
+def cmd_perplexica_explain(args: argparse.Namespace) -> None:
+    """Explain a topic using internal and external knowledge."""
+    print(f"Explaining topic: {args.topic}")
+    print(f"Focus mode: {args.focus_mode}")
+    print(f"Config path: {args.config_path or 'auto-detect'}")
+    
+    try:
+        # Initialize the AI implementation assistant with config-based Perplexica adapter
+        ai_assistant = AIImplementationAssistant(index_dir=args.index_dir, config_path=args.config_path)
+        
+        # Use the enhanced explanation method that combines internal and external knowledge
+        explanation = ai_assistant.explain_with_external_knowledge(args.topic)
+        
+        print(f"\nExplanation of '{args.topic}':")
+        print("=" * 50)
+        print(explanation)
+    
+    except Exception as e:
+        print(f"Error during explanation: {e}")
 
 
 def main():

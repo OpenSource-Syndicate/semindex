@@ -126,7 +126,7 @@ def ensure_default_adapters() -> None:
     register_adapter(PythonAdapter())
 
     if JavascriptTreeSitterAdapter is None:
-        _register_tree_sitter_language_adapters()
+        # Don't register tree-sitter adapters if optional dependencies are not available
         return
 
     try:

@@ -211,3 +211,6 @@ __marimo__/
 wiki/
 
 .cascade_memory
+
+# Configuration
+config.toml

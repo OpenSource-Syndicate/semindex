@@ -21,6 +21,7 @@ dependencies = [
     "requests==2.32.3",
     "beautifulsoup4==4.12.3",
     "html2text==2024.2.26",
+    "toml>=0.10.2",
 ]
 
 [project.optional-dependencies]

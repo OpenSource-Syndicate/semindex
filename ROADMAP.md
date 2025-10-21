@@ -42,6 +42,9 @@ The final phase focuses on refining the user experience, improving performance, 
 - [x] Language adapter registry *(auto-registration + optional Tree-sitter JavaScript adapter)*
 - [x] AI-powered commands for code understanding and generation - Added `ai` command with subcommands for chat, explain, suggest, generate, docs, bugs, refactor, and tests
 - [x] Call graph analysis - Implemented through the graph command with `--callers` and `--callees` options
+- [x] AI-powered project planning - Added `ai-plan` command with subcommands for create, execute, and manage complex software projects
+- [x] Perplexica-powered search capabilities - Added `perplexica` command with search and explain subcommands and various focus modes
+- [x] Configuration system with TOML-based config file
 - [ ] Language injection support *(extended symbol extraction for remaining languages, UI integrations pending)*
 - [ ] Web/GUI interface
 - [ ] Performance benchmarking

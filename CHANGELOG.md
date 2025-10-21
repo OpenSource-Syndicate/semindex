@@ -16,6 +16,29 @@
 - Added call graph analysis with `--callers` and `--callees` options to the `graph` command
 - Introduced AI-powered commands for code understanding and generation (ai subcommand with chat, explain, suggest, generate, docs, bugs, refactor, and tests)
 - Added new test file `test_ai_commands.py` for testing AI command functionality
+- Implemented AI-powered project planning system with `ai-plan` command featuring create, execute, and manage subcommands
+  - Added `ProjectPlanner` class for generating project plans from description or existing codebase
+  - Added `ProjectPhase`, `ProjectTask`, and `ProjectComponent` dataclasses to represent project structure
+  - Added `TaskManager` class for tracking task status and progress
+  - Added `DevelopmentWorkflow` class for executing project plans
+  - Added `TestingFramework` class for generating tests for components
+  - Added `IntegrationManager` class for creating integration layers after implementation
+  - Added `AIImplementationAssistant` with explanation capabilities combining internal and external knowledge
+- Implemented Perplexica-powered search capabilities with `perplexica` command featuring search and explain subcommands
+  - Added `PerplexicaSearchAdapter` class for integrating with Perplexica's search API
+  - Added support for various focus modes (webSearch, docSearch, academicSearch, librarySearch, youtubeSearch, redditSearch, hybridSearch)
+  - Added configuration system with TOML-based config file for API endpoints and model settings
+  - Implemented hybrid search combining local codebase and web results
+  - Added fallback mechanisms when external APIs are unavailable
+- Introduced configuration system with `config.py` module
+  - Added `Config` class for loading and accessing settings from config.toml
+  - Added support for default configuration values and config file discovery
+  - Added methods for getting and setting configuration values via dot-separated paths
+  - Added specific getters for different services (Perplexica, OpenAI, Groq, Ollama)
+- Added new dependencies: `toml` for configuration file parsing
+- Added new modules: `project_planner.py`, `task_manager.py`, `development_workflow.py`, `testing_framework.py`, `integration_manager.py`, `perplexica_adapter.py`, `config.py`, `ai_implementation_assistant.py`, `focus_modes.py`, `component_generator.py`
+- Added new test modules: `test_config.py`, `test_perplexica_integration.py`, `test_ai_planning.py`, and `e2e_test.py` for end-to-end testing
+- Added new command-line interface options for the new AI planning and Perplexica commands
 
 ### Changed
 - Autoplan now generates documentation sections dynamically from indexed codebase rather than hardcoded templates
@@ -23,11 +46,16 @@
 - Improved code organization with separation of concerns in planning logic
 - README.md updated to reflect index-driven documentation planning and new AI commands
 - Enhanced test coverage with additional test cases for RRF edge cases and CLI functionality
+- CLI interface expanded to support new AI planning and Perplexica commands
+- `retrieve_context()` function in `rag.py` enhanced to support different focus modes and configuration-based settings
+- Updated tree-sitter adapter registration to conditionally register adapters only when optional dependencies are available
 
 ### Fixed
 - Fixed missing `cmd_query` function that was causing NameError in CLI
 - Added missing imports (`json`, `sqlite3`) to cli.py
 - Fixed unpacking error in query result formatting (6 fields instead of 7)
+- Fixed issue where tree-sitter adapters would cause errors when optional dependencies weren't available
+- Enhanced error handling in API calls to prevent crashes when external services are unavailable
 
 ## [0.3.0] - 2025-10-20
 
