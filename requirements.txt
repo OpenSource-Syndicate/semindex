@@ -5,7 +5,7 @@ sentencepiece==0.2.0
 tqdm==4.66.5
 numpy==1.26.4
 elasticsearch==8.15.0
-sentence-transformers==3.1.1
+sentence-transformers==5.1.1
 requests==2.32.3
 beautifulsoup4==4.12.3
 html2text==2024.2.26
