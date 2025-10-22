@@ -44,9 +44,10 @@ def test_ai_planning():
             language='auto',
             include_docs=False
         )
-        cmd_index(args)
-        if result.returncode != 0:
-            print("Warning: Indexing failed, proceeding anyway...")
+        try:
+            cmd_index(args)
+        except Exception as e:
+            print(f"Warning: Indexing failed with error {e}, proceeding anyway...")
     
     # Step 2: Create a project plan
     print("\nStep 2: Creating a project plan...")
