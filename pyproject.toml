@@ -18,7 +18,7 @@ dependencies = [
     "numpy==1.26.4",
     "elasticsearch==8.15.0",
     "sentence-transformers==3.1.1",
-    "requests==2.32.3",
+    "requests==2.32.5",
     "beautifulsoup4==4.12.3",
     "html2text==2024.2.26",
     "toml>=0.10.2",
