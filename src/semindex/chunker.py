@@ -51,67 +51,77 @@ def build_semantic_chunks_from_symbols(
     :return: List of semantically coherent chunks
     """
     lines = source.splitlines()
+    
+    # Early return if no symbols
+    if not symbols:
+        return []
+    
+    # Get embeddings for all symbols at once for efficiency
+    symbol_texts = [extract_text_for_symbol(source, symbol) for symbol in symbols]
+    
+    # Filter out empty texts
+    valid_symbols = []
+    valid_texts = []
+    for symbol, text in zip(symbols, symbol_texts):
+        if text.strip():
+            valid_symbols.append(symbol)
+            valid_texts.append(text)
+    
+    if not valid_symbols:
+        return []
+    
+    # Batch encode all symbol texts
+    try:
+        all_embeddings = embedder.encode(valid_texts, batch_size=32)
+    except Exception as e:
+        print(f"[WARN] Could not generate embeddings for symbols: {e}")
+        # Fall back to basic chunking
+        return build_chunks_from_symbols(source, symbols)
+    
+    # Convert to numpy array for vectorized operations
+    embedding_matrix = np.array(all_embeddings)
+    
+    # Use vectorized cosine similarity calculation for efficiency
+    # This calculates similarities between consecutive symbols
+    if len(embedding_matrix) > 1:
+        # Normalize embeddings for cosine similarity
+        norms = np.linalg.norm(embedding_matrix, axis=1, keepdims=True)
+        norms = np.where(norms == 0, 1, norms)  # Avoid division by zero
+        normalized_embeddings = embedding_matrix / norms
+        
+        # Calculate cosine similarities between consecutive symbols
+        consecutive_similarities = np.sum(normalized_embeddings[:-1] * normalized_embeddings[1:], axis=1)
+    else:
+        consecutive_similarities = np.array([])
+    
+    # Group symbols based on similarity thresholds
     semantic_chunks = []
+    current_chunk_symbols = [valid_symbols[0]] if valid_symbols else []
+    current_chunk_start = valid_symbols[0].start_line - 1 if valid_symbols else 0
+    current_chunk_end = valid_symbols[0].end_line if valid_symbols else 0
     
-    # Get embeddings for all symbols to determine semantic boundaries
-    symbol_embeddings = {}
-    
-    for symbol in symbols:
-        text = extract_text_for_symbol(source, symbol)
-        # Generate embedding for the symbol text
-        try:
-            result = embedder.encode([text])  # Get encoded results
-            embedding = result[0]  # Get first (and only) embedding
-            symbol_embeddings[symbol] = embedding
-        except Exception as e:
-            print(f"[WARN] Could not generate embedding for symbol {symbol.name}: {e}")
-            continue
-
-    # Group semantically similar symbols into chunks
-    current_chunk_symbols = []
-    current_chunk_start = 0
-    current_chunk_end = 0
-    
-    for i, symbol in enumerate(symbols):
-        if symbol not in symbol_embeddings:
-            continue
-            
-        # If this is the first symbol in a chunk, start a new chunk
-        if not current_chunk_symbols:
-            current_chunk_symbols.append(symbol)
-            current_chunk_start = symbol.start_line - 1  # Convert to 0-indexed
-            current_chunk_end = symbol.end_line
-            continue
+    # Process symbols in sequence
+    for i in range(1, len(valid_symbols)):
+        symbol = valid_symbols[i]
         
-        # Get the embedding of the last symbol in the current chunk
-        last_symbol = current_chunk_symbols[-1]
-        if last_symbol not in symbol_embeddings:
-            current_chunk_symbols.append(symbol)
-            current_chunk_end = max(current_chunk_end, symbol.end_line)
-            continue
-            
-        last_embedding = symbol_embeddings[last_symbol]
-        current_embedding = symbol_embeddings[symbol]
-        
-        # Calculate similarity between the last symbol in chunk and current symbol
-        similarity = cosine_similarity(last_embedding, current_embedding)
-        
-        # If similarity is above threshold, add to current chunk
-        if similarity >= similarity_threshold:
+        # Check if this symbol should be grouped with the current chunk
+        if i - 1 < len(consecutive_similarities) and consecutive_similarities[i - 1] >= similarity_threshold:
+            # Add to current chunk
             current_chunk_symbols.append(symbol)
             current_chunk_end = max(current_chunk_end, symbol.end_line)
         else:
             # Create a chunk with the accumulated symbols
-            chunk_text = extract_chunk_text(lines, current_chunk_start, current_chunk_end)
-            
-            semantic_chunks.append(
-                SemanticChunk(
-                    symbol=get_representative_symbol(current_chunk_symbols),
-                    text=chunk_text,
-                    start_idx=current_chunk_start,
-                    end_idx=current_chunk_end
+            if current_chunk_symbols:
+                chunk_text = extract_chunk_text(lines, current_chunk_start, current_chunk_end)
+                
+                semantic_chunks.append(
+                    SemanticChunk(
+                        symbol=get_representative_symbol(current_chunk_symbols),
+                        text=chunk_text,
+                        start_idx=current_chunk_start,
+                        end_idx=current_chunk_end
+                    )
                 )
-            )
             
             # Start a new chunk with the current symbol
             current_chunk_symbols = [symbol]

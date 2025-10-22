@@ -47,6 +47,19 @@ class Config:
                 "SIMILARITY_MEASURE": "cosine",
                 "KEEP_ALIVE": "5m"
             },
+            "PERFORMANCE": {
+                "MAX_WORKERS": 4,
+                "BATCH_SIZE": 16,
+                "CACHE_SIZE": 10000,
+                "MAX_MEMORY_MB": 2048,
+                "ENABLE_CACHING": True,
+                "ENABLE_PARALLEL_PROCESSING": True
+            },
+            "MODELS": {
+                "EMBEDDING_MODEL": "BAAI/bge-small-en-v1.5",  # Recommended faster model
+                "CODE_LLM_MODEL": "microsoft/Phi-3-mini-4k-instruct",  # Recommended for code tasks
+                "GENERAL_LLM_MODEL": "microsoft/Phi-3-mini-4k-instruct"  # Recommended for general tasks
+            },
             "MODELS": {
                 "OPENAI": {
                     "API_KEY": ""

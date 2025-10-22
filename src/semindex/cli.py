@@ -277,7 +277,7 @@ def cmd_index(args: argparse.Namespace):
         if all_texts:
             # Process embeddings with progress bar
             vecs = embedder.encode(all_texts, batch_size=args.batch)
-            add_vectors(index_path, con, symbol_ids, vecs)
+            add_vectors(index_path, con, symbol_ids, vecs, batch_size=1000)
 
     try:
         from .keyword_search import KeywordSearcher

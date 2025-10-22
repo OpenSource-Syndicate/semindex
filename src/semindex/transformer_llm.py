@@ -7,6 +7,7 @@ import warnings
 from typing import Iterable, List, Optional
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline
+from .config import get_config
 
 
 class TransformerLLM:
@@ -16,11 +17,14 @@ class TransformerLLM:
     Example:
         llm = TransformerLLM(model_name="microsoft/phi-2")  # or other lightweight model
         text = llm.generate("You are a helpful assistant.", "Explain FAISS in two sentences.")
+        
+    The model_name parameter will default to the value from configuration (MODELS.CODE_LLM_MODEL),
+    then to SEMINDEX_TRANSFORMER_MODEL environment variable, and finally to "microsoft/Phi-3-mini-4k-instruct".
     """
     
     def __init__(
         self,
-        model_name: str = "microsoft/phi-2",
+        model_name: str = None,
         n_ctx: int = 2048,
         temperature: float = 0.2,
         top_p: float = 0.95,
@@ -28,6 +32,14 @@ class TransformerLLM:
         device: str = None,
         torch_dtype: torch.dtype = None,
     ) -> None:
+        # Use configuration to get default model, fallback to environment variable or default
+        if model_name is None:
+            config = get_config()
+            model_from_config = config.get("MODELS.CODE_LLM_MODEL")
+            if model_from_config and model_from_config.strip():
+                model_name = model_from_config
+            else:
+                model_name = os.environ.get("SEMINDEX_TRANSFORMER_MODEL", "microsoft/Phi-3-mini-4k-instruct")  # Recommended model
         # Set device (default to CPU for compatibility)
         if device is None:
             self.device = "cuda" if torch.cuda.is_available() else "cpu"

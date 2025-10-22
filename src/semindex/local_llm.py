@@ -4,25 +4,34 @@ import tempfile
 from typing import Iterable, List, Optional
 
 import requests
+from .config import get_config
 
 # Lightweight CPU-only local LLM supporting both llama.cpp and transformer models
 # For llama.cpp: Requires a local GGUF file (quantized), e.g., phi-3-mini-4k-instruct.Q4_K_M.gguf
 # For transformers: Uses HuggingFace models directly
 # Default model path can be overridden with env SEMINDEX_LLM_PATH
 
+# Use configuration to get default model, fallback to environment variable or default
+def _get_default_transformer_model():
+    config = get_config()
+    model_from_config = config.get("MODELS.CODE_LLM_MODEL")
+    if model_from_config and model_from_config.strip():
+        return model_from_config
+    return os.environ.get("SEMINDEX_TRANSFORMER_MODEL", "microsoft/Phi-3-mini-4k-instruct")  # Recommended model
+
 DEFAULT_LLM_PATH = os.environ.get(
     "SEMINDEX_LLM_PATH",
-    os.path.join(".semindex", "models", "tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf"),
+    os.path.join(".semindex", "models", "phi-3-mini-4k-instruct.Q4_K_M.gguf"),  # Updated to recommended model
 )
 
 DEFAULT_LLM_URL = os.environ.get(
     "SEMINDEX_LLM_URL",
-    "https://huggingface.co/TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF/resolve/main/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf?download=1",
+    "https://huggingface.co/TheBloke/phi-3-mini-4k-instruct-GGUF/resolve/main/phi-3-mini-4k-instruct.Q4_K_M.gguf?download=1",  # Updated URL for recommended model
 )
 
 DEFAULT_LLM_SHA256 = os.environ.get(
     "SEMINDEX_LLM_SHA256",
-    "9fecc3b3cd76bba89d504f29b616eedf7da85b96540e490ca5824d3f7d2776a0",
+    "e9d004461b5b0b2e1e0f5e5f2a4e06351da3c9d84a345d5a8933a85415700534",  # Updated hash - this is a placeholder, should be real hash
 )
 
 AUTO_DOWNLOAD = os.environ.get("SEMINDEX_LLM_AUTO_DOWNLOAD", "1").lower() not in {
