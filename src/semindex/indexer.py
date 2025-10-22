@@ -1,7 +1,7 @@
 import os
 import sqlite3
 from contextlib import contextmanager
-from typing import List, Sequence, Tuple
+from typing import List, Sequence, Tuple, Optional
 import concurrent.futures
 import multiprocessing as mp
 from tqdm import tqdm
@@ -448,6 +448,8 @@ class Indexer:
                         for chunk in chunks:
                             all_texts.append(chunk.text)
 
+                        # Extract language name from target tuple
+                        language_name = target_tuple[0]  # First element in the tuple is language_name
                         file_hashes.append((path, current_hash, language_name))
                         
                         if parse_failed:
