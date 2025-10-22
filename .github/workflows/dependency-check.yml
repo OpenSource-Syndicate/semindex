@@ -1,0 +1,71 @@
+name: Check Dependencies
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  dependency-check:
+    name: Check for outdated dependencies
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v3
+      with:
+        python-version: '3.12'
+
+    - name: Install pipx for dependency checking tools
+      run: |
+        python -m pip install --upgrade pip
+        pip install pipx
+        pipx ensurepath
+
+    - name: Install pip-audit
+      run: pipx install pip-audit
+
+    - name: Install pip-tools
+      run: pipx install pip-tools
+
+    - name: Check for dependency security issues
+      run: |
+        if [ -f requirements.txt ]; then
+          pip-audit --requirement requirements.txt
+        elif [ -f pyproject.toml ]; then
+          pip-audit --requirement <(python -m pip list --format=freeze)
+        fi
+      continue-on-error: true  # Don't fail the workflow if there are security issues
+
+    - name: Check for outdated dependencies
+      run: |
+        if [ -f requirements.txt ]; then
+          # Show outdated packages
+          python -m pip list --outdated --format=freeze | grep -F -f <(python -m pip freeze) > /tmp/outdated.txt
+          if [ -s /tmp/outdated.txt ]; then
+            echo "Outdated packages found:"
+            cat /tmp/outdated.txt
+            echo
+            echo "Consider updating the following packages:"
+            python -m pip list --outdated
+          else
+            echo "All dependencies are up-to-date."
+          fi
+        else
+          echo "No requirements.txt file found, checking pyproject.toml..."
+          # For projects using pyproject.toml, we'll use the installed packages
+          python -m pip list --outdated
+        fi
+
+    - name: Install dependencies to check for compatibility
+      run: |
+        python -m pip install --upgrade pip
+        if [ -f requirements.txt ]; then
+          python -m pip install -r requirements.txt
+        elif [ -f pyproject.toml ]; then
+          python -m pip install .
+        fi
