@@ -27,7 +27,24 @@ def test_ai_planning():
     # Step 1: Index the current project if not already indexed
     print("Step 1: Ensuring project is indexed...")
     if not Path(".semindex").exists():
-        result = run_command(["uv", "run", "semindex", "index", "."])
+        # Import the CLI function directly
+        from semindex.cli import cmd_index
+        import argparse
+        
+        # Create args object similar to what the CLI would parse
+        args = argparse.Namespace(
+            repo=".",
+            index_dir=".semindex",
+            model=None,
+            batch=16,
+            verbose=False,
+            chunking='symbol',
+            similarity_threshold=0.7,
+            incremental=True,
+            language='auto',
+            include_docs=False
+        )
+        cmd_index(args)
         if result.returncode != 0:
             print("Warning: Indexing failed, proceeding anyway...")
     

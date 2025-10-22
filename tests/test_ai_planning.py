@@ -10,7 +10,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from semindex.project_planner import ProjectPlanner
-from semindex.task_manager import TaskManager
+from semindex.task_manager import TaskManager, TaskStatus
 from semindex.development_workflow import DevelopmentWorkflow
 
 
@@ -53,7 +53,7 @@ def test_project_planning():
     # Mark a task as in progress
     if pending_tasks:
         task_name = pending_tasks[0].task_name
-        task_manager.mark_task_status(task_name, task_manager.TaskStatus.IN_PROGRESS)
+        task_manager.mark_task_status(task_name, TaskStatus.IN_PROGRESS)
         print(f'Marked task "{task_name}" as IN_PROGRESS')
         
         # Update progress
