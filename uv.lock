@@ -629,7 +629,7 @@ wheels = [
 
 [[package]]
 name = "semindex"
-version = "0.4.0"
+version = "0.4.2"
 source = { editable = "." }
 dependencies = [
     { name = "beautifulsoup4" },
@@ -681,7 +681,7 @@ requires-dist = [
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=5.0" },
     { name = "requests", specifier = "==2.32.3" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.6" },
-    { name = "sentence-transformers", specifier = "==3.1.1" },
+    { name = "sentence-transformers", specifier = "==5.1.2" },
     { name = "sentencepiece", specifier = "==0.2.0" },
     { name = "toml", specifier = ">=0.10.2" },
     { name = "torch", specifier = "==2.4.0" },
@@ -701,7 +701,7 @@ languages = [
 
 [[package]]
 name = "sentence-transformers"
-version = "3.1.1"
+version = "5.1.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "huggingface-hub" },
@@ -711,10 +711,11 @@ dependencies = [
     { name = "torch" },
     { name = "tqdm" },
     { name = "transformers" },
+    { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/0f/09/f1c25d63d55941d8914f5df91c00a30cd0c10748458e49b4a90f97aa190d/sentence_transformers-3.1.1.tar.gz", hash = "sha256:8f00020ef4ad6b918475c38af545c22f61403b67eb22d994860bab06902db160", size = 191595, upload-time = "2024-09-19T14:18:05.264Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/0f/96/f3f3409179d14dbfdbea8622e2e9eaa3c8836ddcaecd2cd5ff0a11731d20/sentence_transformers-5.1.2.tar.gz", hash = "sha256:0f6c8bd916a78dc65b366feb8d22fd885efdb37432e7630020d113233af2b856", size = 375185, upload-time = "2025-10-22T12:47:55.019Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/75/0c/0bbbf03748c3c7c69f41f016b14cbee946cbd8880d0fb91a05c6f7b7a176/sentence_transformers-3.1.1-py3-none-any.whl", hash = "sha256:c73bf6f17e3676bb9372a6133a254ebfb5907586b470f2bac5a840c64c3cf97e", size = 245290, upload-time = "2024-09-19T14:18:03.813Z" },
+    { url = "https://files.pythonhosted.org/packages/bb/a6/a607a737dc1a00b7afe267b9bfde101b8cee2529e197e57471d23137d4e5/sentence_transformers-5.1.2-py3-none-any.whl", hash = "sha256:724ce0ea62200f413f1a5059712aff66495bc4e815a1493f7f9bca242414c333", size = 488009, upload-time = "2025-10-22T12:47:53.433Z" },
 ]
 
 [[package]]
