@@ -7,7 +7,7 @@ numpy==1.26.4
 elasticsearch==8.15.0
 sentence-transformers==5.1.2
 requests==2.32.3
-beautifulsoup4==4.12.3
+beautifulsoup4==4.14.2
 html2text==2024.2.26
 toml>=0.10.2
 llama-cpp-python>=0.3.16
