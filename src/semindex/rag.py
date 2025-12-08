@@ -1,8 +1,10 @@
 import os
 from typing import List, Tuple
 
+from .config import get_config
 from .embed import Embedder
 from .local_llm import LocalLLM
+from .perplexica_adapter import PerplexicaSearchAdapter
 from .remote_llm import (
     OpenAICompatibleConfig,
     OpenAICompatibleError,
@@ -22,7 +24,7 @@ def _load_snippet(path: str, start_line: int, end_line: int) -> str:
         return f"[ERROR reading {path}:{start_line}-{end_line}] {e}"
 
 
-def retrieve_context(index_dir: str, query: str, top_k: int = 8, hybrid: bool = False, embed_model: str | None = None) -> List[Tuple[float, str]]:
+def retrieve_context(index_dir: str, query: str, top_k: int = 8, hybrid: bool = False, embed_model: str | None = None, config_path: str | None = None) -> List[Tuple[float, str]]:
     """
     Returns list of (score, snippet) pairs.
     """
@@ -44,6 +46,121 @@ def retrieve_context(index_dir: str, query: str, top_k: int = 8, hybrid: bool = 
     return snippets
 
 
+def retrieve_context_with_web(index_dir: str, query: str, top_k: int = 8, web_results_count: int = 3, embed_model: str | None = None, config_path: str | None = None) -> List[Tuple[float, str]]:
+    """
+    Returns list of (score, snippet) pairs combining local codebase results with web search results.
+    """
+    # Get local codebase results
+    local_results = retrieve_context(index_dir, query, top_k, hybrid=False, embed_model=embed_model)
+    
+    # Add web search results using Perplexica with config-based settings
+    perplexica = PerplexicaSearchAdapter(config_path=config_path)
+    if perplexica.is_available():
+        web_results = perplexica.search_web(query, optimization_mode="balanced")
+        
+        if "error" not in web_results and "results" in web_results:
+            # Extract relevant content from web results
+            web_snippets = []
+            for result in web_results["results"][:web_results_count]:  # Take top web results
+                if "pageContent" in result:
+                    title = result.get("title", "No Title")
+                    source_url = result.get("url", "No URL")
+                    content = result["pageContent"][:500]  # Limit content length
+                    snippet = f"# Web Source: {title}\nURL: {source_url}\n\n{content}..."
+                    web_snippets.append((0.8, snippet))  # Assign a default score for web results
+                elif "content" in result:
+                    title = result.get("title", "No Title")
+                    source_url = result.get("url", "No URL")
+                    content = result["content"][:500]  # Limit content length
+                    snippet = f"# Web Source: {title}\nURL: {source_url}\n\n{content}..."
+                    web_snippets.append((0.8, snippet))  # Assign a default score for web results
+            
+            # Combine local and web results
+            combined_results = local_results + web_snippets
+            
+            # Sort by score in descending order (local results will retain their original scores,
+            # web results will have a default score that can still be meaningful)
+            combined_results.sort(key=lambda x: x[0], reverse=True)
+            
+            # Return top_k results
+            return combined_results[:top_k]
+    
+    # If web search is not available, return just local results
+    return local_results
+
+
+def retrieve_context_by_mode(index_dir: str, query: str, focus_mode: str = "codeSearch", 
+                           top_k: int = 8, hybrid: bool = False, embed_model: str | None = None,
+                           config_path: str | None = None) -> List[Tuple[float, str]]:
+    """
+    Returns list of (score, snippet) pairs based on the specified focus mode.
+    """
+    if focus_mode == "webSearch":
+        perplexica = PerplexicaSearchAdapter(config_path=config_path)
+        if perplexica.is_available():
+            # Use web search as the primary source
+            web_results = perplexica.search_web(query)
+            
+            if "error" not in web_results and "results" in web_results:
+                snippets = []
+                for result in web_results["results"][:top_k]:
+                    if "pageContent" in result:
+                        title = result.get("title", "No Title")
+                        source_url = result.get("url", "No URL")
+                        content = result["pageContent"][:500]
+                        snippet = f"# Web Source: {title}\nURL: {source_url}\n\n{content}..."
+                        snippets.append((0.9, snippet))  # High score for web results in web mode
+                    elif "content" in result:
+                        title = result.get("title", "No Title")
+                        source_url = result.get("url", "No URL")
+                        content = result["content"][:500]
+                        snippet = f"# Web Source: {title}\nURL: {source_url}\n\n{content}..."
+                        snippets.append((0.9, snippet))  # High score for web results in web mode
+                return snippets
+        # Fallback to local search if web search failed
+        return retrieve_context(index_dir, query, top_k, hybrid, embed_model, config_path)
+    
+    elif focus_mode == "librarySearch":
+        perplexica = PerplexicaSearchAdapter(config_path=config_path)
+        # For library search, we'll try to identify if the query is about a specific library
+        # This is a simplified approach - in a more advanced implementation, we'd parse the query better
+        import re
+        library_pattern = r"library|package|module|dependency|framework"
+        
+        if re.search(library_pattern, query, re.IGNORECASE) and perplexica.is_available():
+            # Use documentation search for library-related queries
+            doc_results = perplexica.search_documentation(query)
+            
+            if "error" not in doc_results and "results" in doc_results:
+                snippets = []
+                for result in doc_results["results"][:top_k]:
+                    if "pageContent" in result:
+                        title = result.get("title", "No Title")
+                        source_url = result.get("url", "No URL")
+                        content = result["pageContent"][:500]
+                        snippet = f"# Library Documentation: {title}\nURL: {source_url}\n\n{content}..."
+                        snippets.append((0.85, snippet))  # High score for documentation in library mode
+                    elif "content" in result:
+                        title = result.get("title", "No Title")
+                        source_url = result.get("url", "No URL")
+                        content = result["content"][:500]
+                        snippet = f"# Library Documentation: {title}\nURL: {source_url}\n\n{content}..."
+                        snippets.append((0.85, snippet))  # High score for documentation in library mode
+                return snippets
+        
+        # Fallback to local search if documentation search failed
+        return retrieve_context(index_dir, query, top_k, hybrid, embed_model, config_path)
+    
+    elif focus_mode == "hybridSearch":
+        # Use the combined approach with config-based settings
+        return retrieve_context_with_web(index_dir, query, top_k, web_results_count=3, embed_model=embed_model, config_path=config_path)
+    
+    else:
+        # Default to code search
+        return retrieve_context(index_dir, query, top_k, hybrid, embed_model, config_path)
+
+
+
 def generate_answer(
     index_dir: str,
     query: str,
@@ -62,7 +179,11 @@ def generate_answer(
         "Cite file paths inline where relevant. If uncertain, say so."
     )
 
-    llm = LocalLLM(model_path=llm_path)
+    if llm_path:
+        llm = LocalLLM(model_path=llm_path)
+    else:
+        # Use transformer model by default
+        llm = LocalLLM(model_type="transformer", model_name=os.environ.get("SEMINDEX_TRANSFORMER_MODEL", "TinyLlama/TinyLlama-1.1B-Chat-v1.0"))
     answer = llm.generate(
         system_prompt=system_prompt,
         user_prompt=query,

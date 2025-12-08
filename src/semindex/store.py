@@ -196,6 +196,20 @@ def ensure_db(db_path: str):
         """
     )
 
+    # Add critical indexes for performance
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_symbols_path ON symbols(path);")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_symbols_name ON symbols(name);")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_symbols_kind ON symbols(kind);")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_symbols_path_name ON symbols(path, name);")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_calls_caller_id ON calls(caller_id);")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_calls_callee_symbol_id ON calls(callee_symbol_id);")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_symbols_language ON symbols(language);")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_symbols_namespace ON symbols(namespace);")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_files_path ON files(path);")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_files_hash ON files(hash);")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_vectors_symbol_id ON vectors(symbol_id);")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_doc_pages_package ON doc_pages(package);")
+
     con.commit()
     con.close()
 
@@ -260,12 +274,58 @@ def add_symbols(
     return [r[0] for r in cur.execute("SELECT last_insert_rowid();").fetchall()]
 
 
-def add_vectors(index_path: str, con: sqlite3.Connection, symbol_ids: List[int], vectors: np.ndarray):
-    index = faiss.read_index(index_path)
-    index.add(vectors.astype(np.float32))
+def _should_use_memory_mapping(index_path: str, size_threshold_mb: int = 100) -> bool:
+    """Determine if an index should use memory mapping based on its size.
+    
+    Args:
+        index_path: Path to the FAISS index file
+        size_threshold_mb: Threshold in MB above which to use memory mapping
+        
+    Returns:
+        True if memory mapping should be used, False otherwise
+    """
+    try:
+        if os.path.exists(index_path):
+            # Get file size in MB
+            size_mb = os.path.getsize(index_path) / (1024 * 1024)
+            return size_mb > size_threshold_mb
+        return False
+    except:
+        return False
+
+
+def add_vectors(index_path: str, con: sqlite3.Connection, symbol_ids: List[int], vectors: np.ndarray, batch_size: int = 1000):
+    """Add vectors to FAISS index and SQLite database in batches to manage memory usage.
+    
+    For large indexes, attempts to use memory-mapped access to reduce memory footprint.
+    Falls back to regular loading if memory mapping fails.
+    """
+    # Determine if we should use memory mapping based on index size
+    use_mmap = _should_use_memory_mapping(index_path)
+    
+    try:
+        # Try to use memory-mapped index for large indexes to reduce memory usage
+        if use_mmap:
+            index = faiss.read_index(index_path, faiss.IO_FLAG_MMAP)
+        else:
+            index = faiss.read_index(index_path)
+    except:
+        # Fallback to regular index if memory mapping fails
+        index = faiss.read_index(index_path)
+    
+    # Add vectors to FAISS in batches to manage memory
+    for i in range(0, len(vectors), batch_size):
+        batch_vectors = vectors[i:i + batch_size]
+        index.add(batch_vectors.astype(np.float32))
+    
+    # Write index back to disk
     faiss.write_index(index, index_path)
+
+    # Add to SQLite in batches to manage memory
     cur = con.cursor()
-    cur.executemany("INSERT INTO vectors (symbol_id) VALUES (?);", [(sid,) for sid in symbol_ids])
+    for i in range(0, len(symbol_ids), batch_size):
+        batch_ids = symbol_ids[i:i + batch_size]
+        cur.executemany("INSERT INTO vectors (symbol_id) VALUES (?);", [(sid,) for sid in batch_ids])
 
 
 def add_calls(
@@ -283,7 +343,18 @@ def add_calls(
 
 
 def add_doc_vectors(index_path: str, con: sqlite3.Connection, page_ids: List[int], vectors: np.ndarray):
-    index = faiss.read_index(index_path)
+    """Add document vectors to FAISS index and SQLite database.
+    
+    For large indexes, attempts to use memory-mapped access to reduce memory footprint.
+    Falls back to regular loading if memory mapping fails.
+    """
+    try:
+        # Try to use memory-mapped index for large indexes to reduce memory usage
+        index = faiss.read_index(index_path, faiss.IO_FLAG_MMAP)
+    except:
+        # Fallback to regular index if memory mapping fails
+        index = faiss.read_index(index_path)
+    
     index.add(vectors.astype(np.float32))
     faiss.write_index(index, index_path)
     cur = con.cursor()
@@ -291,7 +362,18 @@ def add_doc_vectors(index_path: str, con: sqlite3.Connection, page_ids: List[int
 
 
 def search(index_path: str, con: sqlite3.Connection, query_vec: np.ndarray, top_k: int = 10):
-    index = faiss.read_index(index_path)
+    """Search the FAISS index for similar vectors.
+    
+    For large indexes, attempts to use memory-mapped access to reduce memory footprint.
+    Falls back to regular loading if memory mapping fails.
+    """
+    try:
+        # Try to use memory-mapped index for large indexes to reduce memory usage
+        index = faiss.read_index(index_path, faiss.IO_FLAG_MMAP)
+    except:
+        # Fallback to regular index if memory mapping fails
+        index = faiss.read_index(index_path)
+    
     if index.ntotal == 0:
         return []
 
@@ -316,7 +398,18 @@ def search(index_path: str, con: sqlite3.Connection, query_vec: np.ndarray, top_
 
 
 def search_docs(index_path: str, con: sqlite3.Connection, query_vec: np.ndarray, top_k: int = 10):
-    index = faiss.read_index(index_path)
+    """Search the document FAISS index.
+    
+    For large indexes, attempts to use memory-mapped access to reduce memory footprint.
+    Falls back to regular loading if memory mapping fails.
+    """
+    try:
+        # Try to use memory-mapped index for large indexes to reduce memory usage
+        index = faiss.read_index(index_path, faiss.IO_FLAG_MMAP)
+    except:
+        # Fallback to regular index if memory mapping fails
+        index = faiss.read_index(index_path)
+    
     if index.ntotal == 0:
         return []
 

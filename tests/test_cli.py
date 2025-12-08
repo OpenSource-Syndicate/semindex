@@ -93,3 +93,41 @@ def greet(name):
         assert language == "python"
         assert namespace == "Greeter"
         assert symbol_type == "method"
+
+
+def test_graph_command_execution(tmp_path: Path, monkeypatch):
+    # Create a tiny repo
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "m.py").write_text(
+        """
+class Greeter:
+    def hello(self, name):
+        return f"Hello, {name}!"
+
+def greet(name):
+    return Greeter().hello(name)
+""".lstrip(),
+        encoding="utf-8",
+    )
+
+    # Use a temporary index dir
+    idx = tmp_path / ".semindex"
+
+    # Monkeypatch Embedder to avoid model download
+    monkeypatch.setattr(cli, "Embedder", FakeEmbedder)
+
+    # Index first
+    run_cli(["index", str(repo), "--index-dir", str(idx)])
+
+    # Test graph command with module flag
+    try:
+        run_cli(["graph", str(repo), "--index-dir", str(idx), "--module"])
+    except SystemExit:
+        pass  # graph command returns exit code, which raises SystemExit
+
+    # Test graph command with stats flag
+    try:
+        run_cli(["graph", str(repo), "--index-dir", str(idx), "--stats"])
+    except SystemExit:
+        pass  # graph command returns exit code, which raises SystemExit

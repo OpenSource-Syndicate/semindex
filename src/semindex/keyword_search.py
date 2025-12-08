@@ -66,7 +66,7 @@ class KeywordSearcher:
                         "code_ngram": {
                             "type": "ngram",
                             "min_gram": 2,
-                            "max_gram": 10,
+                            "max_gram": 3,  # Reduced to comply with max_ngram_diff limit
                             "token_chars": ["letter", "digit", "punctuation", "symbol"]
                         }
                     }

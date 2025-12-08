@@ -10,17 +10,22 @@ authors = [{ name = "OpenSource Syndicate" }]
 readme = "README.md"
 requires-python = "==3.12.11"
 dependencies = [
-    "faiss-cpu==1.8.0",
+    "faiss-cpu==1.12.0",
     "transformers==4.44.2",
-    "torch==2.4.0",
+    "torch==2.9.0",
     "sentencepiece==0.2.0",
     "tqdm==4.66.5",
     "numpy==1.26.4",
     "elasticsearch==8.15.0",
-    "sentence-transformers==3.1.1",
+    "sentence-transformers==5.1.2",
     "requests==2.32.3",
-    "beautifulsoup4==4.12.3",
+    "beautifulsoup4==4.14.2",
     "html2text==2024.2.26",
+    "toml>=0.10.2",
+    "llama-cpp-python>=0.3.16",
+    "colorama>=0.4.6",
+    "watchdog>=4.0.0",
+    "psutil>=5.9.0",
 ]
 
 [project.optional-dependencies]

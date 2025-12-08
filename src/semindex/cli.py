@@ -36,6 +36,27 @@ from .docs.graph_builder import (
     build_pipeline_graph,
     build_repo_statistics,
 )
+from .ai import (
+    cmd_ai_chat,
+    cmd_ai_explain,
+    cmd_ai_suggest,
+    cmd_ai_generate,
+    cmd_ai_docs,
+    cmd_ai_find_bugs,
+    cmd_ai_refactor,
+    cmd_ai_tests,
+    cmd_generate_context,
+)
+
+# Import new AI project planning commands
+from .project_planner import ProjectPlanner
+from .task_manager import TaskManager, TaskStatus
+from .development_workflow import DevelopmentWorkflow
+from .testing_framework import TestingFramework
+from .integration_manager import IntegrationManager
+from .perplexica_adapter import PerplexicaSearchAdapter
+from .focus_modes import FocusMode, FocusModeManager
+from .ai_implementation_assistant import AIImplementationAssistant
 
 
 # Re-export helpers expected by tests for monkeypatching.
@@ -162,7 +183,9 @@ def cmd_index(args: argparse.Namespace):
     all_texts: List[str] = []
     file_hashes: List[Tuple[str, str, str]] = []
 
-    for language_name, adapter, path in targets:
+    # Process files with progress bar
+    from tqdm import tqdm
+    for language_name, adapter, path in tqdm(targets, desc="Processing files", unit="file"):
         try:
             source = read_text(path)
         except Exception as exc:
@@ -252,8 +275,9 @@ def cmd_index(args: argparse.Namespace):
         symbol_ids = list(range(first_id, last_id + 1)) if count > 0 else []
 
         if all_texts:
+            # Process embeddings with progress bar
             vecs = embedder.encode(all_texts, batch_size=args.batch)
-            add_vectors(index_path, con, symbol_ids, vecs)
+            add_vectors(index_path, con, symbol_ids, vecs, batch_size=1000)
 
     try:
         from .keyword_search import KeywordSearcher
@@ -268,7 +292,8 @@ def cmd_index(args: argparse.Namespace):
         with db_conn(db_path) as con:
             all_symbols = get_all_symbols_for_keyword_index(con)
             # Add content to each symbol based on the source files
-            for symbol in all_symbols:
+            print("Indexing symbols in keyword search...")
+            for symbol in tqdm(all_symbols, desc="Indexing keywords", unit="symbol"):
                 try:
                     with open(symbol["path"], 'r', encoding='utf-8') as f:
                         source = f.read()
@@ -304,6 +329,10 @@ def cmd_index(args: argparse.Namespace):
 
 def cmd_query(args: argparse.Namespace):
     """Query the semantic index."""
+    import colorama
+    from colorama import Fore, Style
+    colorama.init(autoreset=True)  # Initialize colorama
+    
     from .search import search_similar
 
     index_dir = os.path.abspath(args.index_dir)
@@ -319,7 +348,7 @@ def cmd_query(args: argparse.Namespace):
         else:
             results = search_similar(index_dir, qvec, top_k=args.top_k)
     except Exception as e:
-        print(f"Search failed: {e}")
+        print(f"{Fore.RED}Search failed: {e}{Style.RESET_ALL}")
         return
 
     # Handle docs retrieval if requested
@@ -336,7 +365,7 @@ def cmd_query(args: argparse.Namespace):
             code_scores = [r[0] for r in results] or [1.0]
             doc_scores = [r[0] for r in doc_results] or [1.0]
             max_code = max(code_scores) if code_scores else 1.0
-            max_doc = max(doc_scores) if doc_scores else 1.0
+            max_doc = max(doc_scores) if doc_results else 0.0
             for r in results:
                 merged.append(((1.0 - args.docs_weight) * (r[0] / (max_code or 1.0)), ("code", r)))
             for r in doc_results:
@@ -344,6 +373,7 @@ def cmd_query(args: argparse.Namespace):
             merged.sort(key=lambda x: x[0], reverse=True)
             merged = merged[:args.top_k]
             results = [r for _score, (_rtype, r) in merged]
+<<<<<<< HEAD
 
     if not results and not args.ollama:
         print("No results found.")
@@ -412,6 +442,23 @@ def cmd_query(args: argparse.Namespace):
                     print(f"   Signature: {signature}")
                 print(f"   Score: {score:.4f}")
                 print()
+=======
+    
+    if not results:
+        print(f"{Fore.YELLOW}No results found.{Style.RESET_ALL}")
+        return
+    
+    print(f"{Fore.CYAN}Found {len(results)} results for query: '{args.query}'{Style.RESET_ALL}")
+    print()
+    
+    for i, (score, symbol_id, symbol_info) in enumerate(results, 1):
+        path, name, kind, start_line, end_line, signature = symbol_info[:6]
+        print(f"{Fore.GREEN}{i}. {Fore.BLUE}{name} {Fore.MAGENTA}({kind}) {Fore.RESET}in {Fore.CYAN}{path}:{start_line}-{end_line}{Style.RESET_ALL}")
+        if signature:
+            print(f"   {Fore.YELLOW}Signature: {Fore.WHITE}{signature}{Style.RESET_ALL}")
+        print(f"   {Fore.CYAN}Score: {Fore.LIGHTYELLOW_EX}{score:.4f}{Style.RESET_ALL}")
+        print()
+>>>>>>> 90adab28611ad397922e1041f5567a8925b53065
 
 
 def cmd_graph(args: argparse.Namespace) -> int:
@@ -554,7 +601,594 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p_graph.add_argument("--callees", type=str, help="Show callees of fully qualified symbol name")
     p_graph.set_defaults(func=cmd_graph)
 
+    # Explore command parser
+    p_explore = sub.add_parser("explore", help="Interactive exploration of the codebase")
+    p_explore.add_argument("--index-dir", default=".semindex", help="Index directory (default: .semindex)")
+    p_explore.set_defaults(func=cmd_explore)
+
+    # AI command parser
+    p_ai = sub.add_parser("ai", help="AI-powered commands for code understanding and generation")
+    ai_sub = p_ai.add_subparsers(dest="ai_cmd", required=True)
+    
+    # AI chat command
+    p_ai_chat = ai_sub.add_parser("chat", help="Start an interactive AI chat session about the codebase")
+    p_ai_chat.add_argument("--index-dir", default=".semindex", help="Index directory (default: .semindex)")
+    p_ai_chat.add_argument("--model", default=os.environ.get("SEMINDEX_MODEL", "microsoft/codebert-base"))
+    p_ai_chat.add_argument("--llm-path", help="Path to local LLM model")
+    p_ai_chat.add_argument("--top-k", type=int, default=5, help="Number of context snippets to retrieve")
+    p_ai_chat.add_argument("--max-tokens", type=int, default=512, help="Maximum tokens for LLM response")
+    p_ai_chat.add_argument("--hybrid", action="store_true", help="Use hybrid search for context retrieval")
+    p_ai_chat.set_defaults(func=cmd_ai_chat)
+    
+    # AI explain command
+    p_ai_explain = ai_sub.add_parser("explain", help="Explain code functionality")
+    p_ai_explain.add_argument("target", help="Code element to explain (function, class, module, etc.)")
+    p_ai_explain.add_argument("--index-dir", default=".semindex", help="Index directory (default: .semindex)")
+    p_ai_explain.add_argument("--model", default=os.environ.get("SEMINDEX_MODEL", "microsoft/codebert-base"))
+    p_ai_explain.add_argument("--llm-path", help="Path to local LLM model")
+    p_ai_explain.add_argument("--top-k", type=int, default=5, help="Number of context snippets to retrieve")
+    p_ai_explain.add_argument("--max-tokens", type=int, default=512, help="Maximum tokens for LLM response")
+    p_ai_explain.add_argument("--hybrid", action="store_true", help="Use hybrid search for context retrieval")
+    p_ai_explain.set_defaults(func=cmd_ai_explain)
+    
+    # AI suggest command
+    p_ai_suggest = ai_sub.add_parser("suggest", help="Suggest improvements to the codebase")
+    p_ai_suggest.add_argument("--index-dir", default=".semindex", help="Index directory (default: .semindex)")
+    p_ai_suggest.add_argument("--model", default=os.environ.get("SEMINDEX_MODEL", "microsoft/codebert-base"))
+    p_ai_suggest.add_argument("--llm-path", help="Path to local LLM model")
+    p_ai_suggest.add_argument("--top-k", type=int, default=5, help="Number of context snippets to retrieve")
+    p_ai_suggest.add_argument("--max-tokens", type=int, default=512, help="Maximum tokens for LLM response")
+    p_ai_suggest.add_argument("--hybrid", action="store_true", help="Use hybrid search for context retrieval")
+    p_ai_suggest.set_defaults(func=cmd_ai_suggest)
+    
+    # AI generate command
+    p_ai_generate = ai_sub.add_parser("generate", help="Generate code based on description")
+    p_ai_generate.add_argument("description", help="Description of the code to generate")
+    p_ai_generate.add_argument("--index-dir", default=".semindex", help="Index directory (default: .semindex)")
+    p_ai_generate.add_argument("--model", default=os.environ.get("SEMINDEX_MODEL", "microsoft/codebert-base"))
+    p_ai_generate.add_argument("--llm-path", help="Path to local LLM model")
+    p_ai_generate.add_argument("--top-k", type=int, default=5, help="Number of context snippets to retrieve")
+    p_ai_generate.add_argument("--max-tokens", type=int, default=512, help="Maximum tokens for LLM response")
+    p_ai_generate.add_argument("--hybrid", action="store_true", help="Use hybrid search for context retrieval")
+    p_ai_generate.add_argument("--include-context", action="store_true", help="Include relevant code context in generation")
+    p_ai_generate.set_defaults(func=cmd_ai_generate)
+    
+    # AI docs command
+    p_ai_docs = ai_sub.add_parser("docs", help="Generate documentation for code elements")
+    p_ai_docs.add_argument("target", help="Code element to document (function, class, module, etc.)")
+    p_ai_docs.add_argument("--index-dir", default=".semindex", help="Index directory (default: .semindex)")
+    p_ai_docs.add_argument("--model", default=os.environ.get("SEMINDEX_MODEL", "microsoft/codebert-base"))
+    p_ai_docs.add_argument("--llm-path", help="Path to local LLM model")
+    p_ai_docs.add_argument("--top-k", type=int, default=5, help="Number of context snippets to retrieve")
+    p_ai_docs.add_argument("--max-tokens", type=int, default=512, help="Maximum tokens for LLM response")
+    p_ai_docs.add_argument("--hybrid", action="store_true", help="Use hybrid search for context retrieval")
+    p_ai_docs.set_defaults(func=cmd_ai_docs)
+    
+    # AI find bugs command
+    p_ai_bugs = ai_sub.add_parser("bugs", help="Find potential bugs in code")
+    p_ai_bugs.add_argument("target", nargs="?", help="Specific code element to analyze for bugs (optional)")
+    p_ai_bugs.add_argument("--index-dir", default=".semindex", help="Index directory (default: .semindex)")
+    p_ai_bugs.add_argument("--model", default=os.environ.get("SEMINDEX_MODEL", "microsoft/codebert-base"))
+    p_ai_bugs.add_argument("--llm-path", help="Path to local LLM model")
+    p_ai_bugs.add_argument("--top-k", type=int, default=5, help="Number of context snippets to retrieve")
+    p_ai_bugs.add_argument("--max-tokens", type=int, default=512, help="Maximum tokens for LLM response")
+    p_ai_bugs.add_argument("--hybrid", action="store_true", help="Use hybrid search for context retrieval")
+    p_ai_bugs.set_defaults(func=cmd_ai_find_bugs)
+    
+    # AI refactoring command
+    p_ai_refactor = ai_sub.add_parser("refactor", help="Suggest refactoring opportunities")
+    p_ai_refactor.add_argument("target", nargs="?", help="Specific code element to analyze for refactoring (optional)")
+    p_ai_refactor.add_argument("--index-dir", default=".semindex", help="Index directory (default: .semindex)")
+    p_ai_refactor.add_argument("--model", default=os.environ.get("SEMINDEX_MODEL", "microsoft/codebert-base"))
+    p_ai_refactor.add_argument("--llm-path", help="Path to local LLM model")
+    p_ai_refactor.add_argument("--top-k", type=int, default=5, help="Number of context snippets to retrieve")
+    p_ai_refactor.add_argument("--max-tokens", type=int, default=512, help="Maximum tokens for LLM response")
+    p_ai_refactor.add_argument("--hybrid", action="store_true", help="Use hybrid search for context retrieval")
+    p_ai_refactor.set_defaults(func=cmd_ai_refactor)
+    
+    # AI tests command
+    p_ai_tests = ai_sub.add_parser("tests", help="Generate unit tests for code")
+    p_ai_tests.add_argument("target", help="Code element to generate tests for")
+    p_ai_tests.add_argument("--framework", default="pytest", help="Testing framework to use (default: pytest)")
+    p_ai_tests.add_argument("--index-dir", default=".semindex", help="Index directory (default: .semindex)")
+    p_ai_tests.add_argument("--model", default=os.environ.get("SEMINDEX_MODEL", "microsoft/codebert-base"))
+    p_ai_tests.add_argument("--llm-path", help="Path to local LLM model")
+    p_ai_tests.add_argument("--top-k", type=int, default=5, help="Number of context snippets to retrieve")
+    p_ai_tests.add_argument("--max-tokens", type=int, default=512, help="Maximum tokens for LLM response")
+    p_ai_tests.add_argument("--hybrid", action="store_true", help="Use hybrid search for context retrieval")
+    p_ai_tests.set_defaults(func=cmd_ai_tests)
+    
+    # AI generate-context command
+    p_ai_gen_ctx = ai_sub.add_parser("generate-context", help="Generate code with full context awareness")
+    p_ai_gen_ctx.add_argument("--file-path", required=True, help="Path to the target file")
+    p_ai_gen_ctx.add_argument("--line-number", type=int, required=True, help="Line number to generate code for")
+    p_ai_gen_ctx.add_argument("--request", required=True, help="Natural language request for code generation")
+    p_ai_gen_ctx.add_argument("--index-dir", default=".semindex", help="Index directory (default: .semindex)")
+    p_ai_gen_ctx.add_argument("--model", default=os.environ.get("SEMINDEX_MODEL", "microsoft/codebert-base"))
+    p_ai_gen_ctx.add_argument("--llm-path", help="Path to local LLM model")
+    p_ai_gen_ctx.add_argument("--max-tokens", type=int, default=512, help="Maximum tokens for LLM response")
+    p_ai_gen_ctx.add_argument("--apply", action="store_true", help="Apply the generated code to the file")
+    p_ai_gen_ctx.set_defaults(func=cmd_generate_context)
+
+    # AI Project Planning command
+    p_ai_plan = sub.add_parser("ai-plan", help="AI-powered project planning and execution")
+    ai_plan_sub = p_ai_plan.add_subparsers(dest="ai_plan_cmd", required=True)
+    
+    # Plan command
+    p_ai_plan_create = ai_plan_sub.add_parser("create", help="Create a project plan from description or codebase")
+    p_ai_plan_create.add_argument("project_description", help="Description of the project to plan")
+    p_ai_plan_create.add_argument("--index-dir", default=".semindex", help="Index directory (default: .semindex)")
+    p_ai_plan_create.add_argument("--project-name", help="Name for the project")
+    p_ai_plan_create.add_argument("--analyze-codebase", action="store_true", 
+                                 help="Analyze existing codebase to create plan")
+    p_ai_plan_create.add_argument("--output", help="Output file to save the plan (JSON format)")
+    p_ai_plan_create.set_defaults(func=cmd_ai_plan_create)
+    
+    # Execute command
+    p_ai_plan_execute = ai_plan_sub.add_parser("execute", help="Execute a planned project")
+    p_ai_plan_execute.add_argument("--index-dir", default=".semindex", help="Index directory (default: .semindex)")
+    p_ai_plan_execute.add_argument("--plan-file", help="Path to project plan file (JSON format)")
+    p_ai_plan_execute.add_argument("--phase", help="Execute a specific phase of the project")
+    p_ai_plan_execute.add_argument("--generate-tests", action="store_true", 
+                                  help="Generate tests for components after implementation")
+    p_ai_plan_execute.add_argument("--integrate", action="store_true", 
+                                  help="Create integration layer after implementation")
+    p_ai_plan_execute.set_defaults(func=cmd_ai_plan_execute)
+    
+    # Manage command
+    p_ai_plan_manage = ai_plan_sub.add_parser("manage", help="Manage project tasks and progress")
+    p_ai_plan_manage.add_argument("--index-dir", default=".semindex", help="Index directory (default: .semindex)")
+    p_ai_plan_manage.add_argument("--plan-file", help="Path to project plan file (JSON format)")
+    p_ai_plan_manage.add_argument("--report", action="store_true", 
+                                 help="Generate project progress report")
+    p_ai_plan_manage.add_argument("--task", help="Specific task to manage")
+    p_ai_plan_manage.add_argument("--status", choices=["pending", "in_progress", "completed", "blocked", "cancelled"],
+                                 help="Set status for a task")
+    p_ai_plan_manage.set_defaults(func=cmd_ai_plan_manage)
+    
+    # Perplexica-powered search command
+    p_perplexica = sub.add_parser("perplexica", help="Perplexica-powered search capabilities")
+    perplexica_sub = p_perplexica.add_subparsers(dest="perplexica_cmd", required=True)
+    
+    # Perplexica search command
+    p_perplexica_search = perplexica_sub.add_parser("search", help="Search using Perplexica API with various focus modes")
+    p_perplexica_search.add_argument("query", help="Search query")
+    p_perplexica_search.add_argument("--index-dir", default=".semindex", help="Index directory (default: .semindex)")
+    p_perplexica_search.add_argument("--config-path", help="Path to config.toml file (default: auto-detect)")
+    p_perplexica_search.add_argument("--focus-mode", 
+                                   choices=["codeSearch", "docSearch", "webSearch", "academicSearch", "librarySearch", "youtubeSearch", "redditSearch", "hybridSearch"],
+                                   default="hybridSearch",
+                                   help="Focus mode for search (default: hybridSearch)")
+    p_perplexica_search.add_argument("--top-k", type=int, default=5, help="Number of results to return")
+    p_perplexica_search.add_argument("--web-results-count", type=int, default=3, help="Number of web results to include in hybrid search")
+    p_perplexica_search.set_defaults(func=cmd_perplexica_search)
+    
+    # Perplexica explain command
+    p_perplexica_explain = perplexica_sub.add_parser("explain", help="Explain a topic using internal and external knowledge")
+    p_perplexica_explain.add_argument("topic", help="Topic to explain")
+    p_perplexica_explain.add_argument("--index-dir", default=".semindex", help="Index directory (default: .semindex)")
+    p_perplexica_explain.add_argument("--config-path", help="Path to config.toml file (default: auto-detect)")
+    p_perplexica_explain.add_argument("--focus-mode", 
+                                    choices=["codeSearch", "docSearch", "webSearch", "academicSearch", "librarySearch", "youtubeSearch", "redditSearch", "hybridSearch"],
+                                    default="hybridSearch",
+                                    help="Focus mode for explanation (default: hybridSearch)")
+    p_perplexica_explain.set_defaults(func=cmd_perplexica_explain)
+
     return p
+
+
+def cmd_ai_plan_create(args: argparse.Namespace) -> None:
+    """Create a project plan from description or by analyzing codebase."""
+    project_description = args.project_description
+    project_name = args.project_name or "AI-Generated Project"
+    
+    planner = ProjectPlanner(index_dir=args.index_dir)
+    
+    if args.analyze_codebase:
+        print(f"Analyzing codebase to create project plan for: {project_description}")
+        plan = planner.generate_plan_from_codebase(repo_root=os.getcwd(), project_description=project_description)
+    else:
+        print(f"Creating project plan for: {project_description}")
+        plan = planner.generate_plan_from_description(project_description, project_name)
+    
+    print(f"\nGenerated project plan: {plan.name}")
+    print(f"Description: {plan.description}")
+    print(f"Phases: {len(plan.phases)}")
+    print(f"Components: {len(plan.components)}")
+    
+    if args.output:
+        planner.save_plan(plan, args.output)
+        print(f"Plan saved to: {args.output}")
+    else:
+        # Print a summary of the plan
+        for phase in plan.phases:
+            print(f"\nPhase: {phase.name} ({phase.phase_type.value})")
+            print(f"  Description: {phase.description}")
+            print(f"  Tasks: {len(phase.tasks)}")
+            for task in phase.tasks[:3]:  # Show first 3 tasks
+                print(f"    - {task.name}: {task.description[:60]}...")
+            if len(phase.tasks) > 3:
+                print(f"    ... and {len(phase.tasks) - 3} more tasks")
+
+
+def cmd_ai_plan_execute(args: argparse.Namespace) -> None:
+    """Execute a planned project."""
+    if not args.plan_file:
+        print("Error: --plan-file is required to execute a project")
+        return
+    
+    # Load the plan
+    planner = ProjectPlanner(index_dir=args.index_dir)
+    try:
+        plan = planner.load_plan(args.plan_file)
+        print(f"Loaded project plan: {plan.name}")
+    except Exception as e:
+        print(f"Error loading plan from {args.plan_file}: {e}")
+        return
+    
+    # Create task manager and development workflow
+    task_manager = TaskManager(project_plan=plan)
+    dev_workflow = DevelopmentWorkflow(project_plan=plan, task_manager=task_manager, index_dir=args.index_dir)
+    
+    # Execute the plan
+    if args.phase:
+        print(f"Executing phase: {args.phase}")
+        success = dev_workflow.execute_phase(args.phase)
+    else:
+        print("Executing entire project plan...")
+        success = dev_workflow.execute_project()
+    
+    if success:
+        print("Project execution completed successfully")
+        
+        # Validate generated code
+        validation_errors = dev_workflow.validate_generated_code()
+        if not validation_errors:
+            print("[OK] All generated code has valid syntax")
+        
+        # Generate tests if requested
+        if args.generate_tests:
+            print("Generating tests for components...")
+            testing_framework = TestingFramework(project_plan=plan, index_dir=args.index_dir)
+            test_files = testing_framework.generate_all_tests()
+            written_test_files = testing_framework.write_tests_to_files(test_files)
+            print(f"Generated {len(written_test_files)} test files")
+        
+        # Create integration if requested
+        if args.integrate:
+            print("Creating integration layer...")
+            integration_manager = IntegrationManager(project_plan=plan, index_dir=args.index_dir)
+            integration_manager.generate_integration_layer()
+            integration_manager.create_integration_test()
+            integration_manager.create_api_layer()
+            integration_manager.create_documentation()
+            
+            # Validate integration
+            validation_results = integration_manager.validate_integration()
+            if validation_results["valid"]:
+                print("[OK] Integration validation successful")
+            else:
+                print("[ERROR] Integration validation failed:")
+                for issue in validation_results["issues"]:
+                    print(f"  - {issue}")
+        
+        # Generate final task report
+        print("\n" + dev_workflow.generate_task_report())
+    else:
+        print("Project execution completed with errors")
+
+
+def cmd_ai_plan_manage(args: argparse.Namespace) -> None:
+    """Manage project tasks and progress."""
+    if not args.plan_file:
+        print("Error: --plan-file is required to manage a project")
+        return
+    
+    # Load the plan
+    planner = ProjectPlanner(index_dir=args.index_dir)
+    try:
+        plan = planner.load_plan(args.plan_file)
+        print(f"Loaded project plan: {plan.name}")
+    except Exception as e:
+        print(f"Error loading plan from {args.plan_file}: {e}")
+        return
+    
+    # Create task manager
+    task_manager = TaskManager(project_plan=plan)
+    
+    if args.report:
+        # Generate and print the progress report
+        report = task_manager.generate_report()
+        print(report)
+    elif args.task and args.status:
+        # Update the status of a specific task
+        status_map = {
+            "pending": TaskStatus.PENDING,
+            "in_progress": TaskStatus.IN_PROGRESS,
+            "completed": TaskStatus.COMPLETED,
+            "blocked": TaskStatus.BLOCKED,
+            "cancelled": TaskStatus.CANCELLED
+        }
+        status_enum = status_map.get(args.status)
+        
+        if status_enum:
+            if task_manager.mark_task_status(args.task, status_enum):
+                print(f"Updated task '{args.task}' status to '{args.status}'")
+            else:
+                print(f"Could not find task '{args.task}'")
+        else:
+            print(f"Invalid status: {args.status}")
+    else:
+        # Default: show a summary of tasks
+        pending_tasks = task_manager.get_pending_tasks()
+        in_progress_tasks = task_manager.get_in_progress_tasks()
+        completed_tasks = task_manager.get_completed_tasks()
+        
+        print(f"Task Summary:")
+        print(f"  Pending: {len(pending_tasks)}")
+        print(f"  In Progress: {len(in_progress_tasks)}")
+        print(f"  Completed: {len(completed_tasks)}")
+        
+        if in_progress_tasks:
+            print(f"\nIn Progress Tasks:")
+            for task in in_progress_tasks:
+                print(f"  - {task.task_name} ({task.percentage_complete}%)")
+        
+        if pending_tasks:
+            print(f"\nNext Task: {pending_tasks[0].task_name if pending_tasks else 'None'}")
+
+
+def cmd_perplexica_search(args: argparse.Namespace) -> None:
+    """Search using Perplexica API with various focus modes."""
+    # Initialize the RAG system with the new focus mode functionality
+    from .rag import retrieve_context_by_mode
+    
+    print(f"Searching with focus mode: {args.focus_mode}")
+    print(f"Query: {args.query}")
+    print(f"Config path: {args.config_path or 'auto-detect'}")
+    
+    try:
+        results = retrieve_context_by_mode(
+            index_dir=args.index_dir,
+            query=args.query,
+            focus_mode=args.focus_mode,
+            top_k=args.top_k,
+            config_path=args.config_path
+        )
+        
+        if not results:
+            print("No results found.")
+            return
+        
+        print(f"\nFound {len(results)} results:")
+        for i, (score, snippet) in enumerate(results, 1):
+            print(f"\n{i}. Score: {score:.3f}")
+            print(snippet[:1000] + ("..." if len(snippet) > 1000 else ""))  # Limit snippet display
+            print("-" * 80)
+    
+    except Exception as e:
+        print(f"Error during search: {e}")
+
+
+def cmd_perplexica_explain(args: argparse.Namespace) -> None:
+    """Explain a topic using internal and external knowledge."""
+    print(f"Explaining topic: {args.topic}")
+    print(f"Focus mode: {args.focus_mode}")
+    print(f"Config path: {args.config_path or 'auto-detect'}")
+    
+    try:
+        # Initialize the AI implementation assistant with config-based Perplexica adapter
+        ai_assistant = AIImplementationAssistant(index_dir=args.index_dir, config_path=args.config_path)
+        
+        # Use the enhanced explanation method that combines internal and external knowledge
+        explanation = ai_assistant.explain_with_external_knowledge(args.topic)
+        
+        print(f"\nExplanation of '{args.topic}':")
+        print("=" * 50)
+        print(explanation)
+    
+    except Exception as e:
+        print(f"Error during explanation: {e}")
+
+
+def cmd_explore(args: argparse.Namespace) -> None:
+    """Interactive exploration of the codebase."""
+    import colorama
+    from colorama import Fore, Style
+    colorama.init(autoreset=True)
+    
+    from .search import Searcher
+    import sys
+    
+    # Try to enable readline for command history and completion
+    try:
+        import readline
+        # Set up command history
+        import os
+        histfile = os.path.join(os.path.expanduser("~"), ".semindex_history")
+        try:
+            readline.read_history_file(histfile)
+            # default history len is -1 (infinite), which may grow unruly
+            readline.set_history_length(1000)
+        except FileNotFoundError:
+            pass
+        import atexit
+        atexit.register(readline.write_history_file, histfile)
+        
+        # Set up tab completion
+        import rlcompleter
+        readline.parse_and_bind("tab: complete")
+        
+        # Define a custom completer to complete our commands
+        class CommandCompleter:
+            def __init__(self, commands):
+                self.commands = commands
+                
+            def complete(self, text, state):
+                """Custom completer for our commands"""
+                results = [cmd for cmd in self.commands if cmd.startswith(text)] + [None]
+                return results[state]
+        
+        # Set up our custom commands for completion
+        commands = ['help', 'suggest', 'query', 'quit', 'exit']
+        completer = CommandCompleter(commands)
+        readline.set_completer(completer.complete)
+        
+    except ImportError:
+        # readline is not available on some platforms (e.g. Windows)
+        # We'll just continue without it
+        pass
+    
+    print(f"{Fore.CYAN}Starting interactive exploration...{Style.RESET_ALL}")
+    print(f"{Fore.YELLOW}Type 'help' for commands, 'quit' or 'exit' to exit.{Style.RESET_ALL}")
+    print()
+    
+    searcher = Searcher(index_dir=args.index_dir)
+    
+    # Common query suggestions
+    suggestions = [
+        "find functions that handle authentication",
+        "show me all database queries",
+        "find error handling patterns", 
+        "show classes that inherit from BaseClass",
+        "find code related to file upload",
+        "show me API endpoints",
+        "find logging statements",
+        "show code with TODO comments"
+    ]
+    
+    while True:
+        try:
+            query = input(f"{Fore.GREEN}semindex> {Style.RESET_ALL}").strip()
+            
+            if query.lower() in ['quit', 'exit', 'q']:
+                print(f"{Fore.YELLOW}Goodbye!{Style.RESET_ALL}")
+                break
+            elif query.lower() == 'help':
+                print(f"{Fore.CYAN}Commands:{Style.RESET_ALL}")
+                print(f"  {Fore.MAGENTA}query <text>{Style.RESET_ALL} - Search for code using natural language")
+                print(f"  {Fore.MAGENTA}query -h{Style.RESET_ALL} - Show query options")
+                print(f"  {Fore.MAGENTA}suggest{Style.RESET_ALL} - Show common query suggestions")
+                print(f"  {Fore.MAGENTA}quit/exit{Style.RESET_ALL} - Exit the interactive mode")
+                print(f"  {Fore.MAGENTA}help{Style.RESET_ALL} - Show this help message")
+                print()
+            elif query.lower() == 'suggest':
+                print(f"{Fore.CYAN}Common query suggestions:{Style.RESET_ALL}")
+                for i, suggestion in enumerate(suggestions, 1):
+                    print(f"  {Fore.MAGENTA}{i}.{Style.RESET_ALL} {suggestion}")
+                print()
+            elif query.startswith('query -h'):
+                print(f"{Fore.CYAN}Query options:{Style.RESET_ALL}")
+                print(f"  {Fore.MAGENTA}--top-k N{Style.RESET_ALL} - Number of results to return (default: 5)")
+                print(f"  {Fore.MAGENTA}--hybrid{Style.RESET_ALL} - Use hybrid search (vector + keyword)")
+                print(f"  {Fore.MAGENTA}--include-docs{Style.RESET_ALL} - Include external docs in results")
+                print()
+            elif query.startswith('query '):
+                # Extract actual query text after 'query' command
+                actual_query = query[6:].strip()
+                if not actual_query:
+                    print(f"{Fore.RED}Please provide a query after 'query'{Style.RESET_ALL}")
+                    continue
+                
+                # Default search parameters
+                top_k = 5
+                hybrid = False
+                include_docs = False
+                
+                # Parse potential flags in the query
+                parts = actual_query.split()
+                i = 0
+                while i < len(parts):
+                    if parts[i] == '--top-k' and i + 1 < len(parts):
+                        try:
+                            top_k = int(parts[i + 1])
+                            parts = parts[:i] + parts[i + 2:]
+                        except ValueError:
+                            print(f"{Fore.RED}Invalid value for --top-k, using default 5{Style.RESET_ALL}")
+                            i += 1
+                    elif parts[i] == '--hybrid':
+                        hybrid = True
+                        parts = parts[:i] + parts[i + 1:]
+                    elif parts[i] == '--include-docs':
+                        include_docs = True
+                        parts = parts[:i] + parts[i + 1:]
+                    else:
+                        i += 1
+                
+                # Join remaining parts as the actual query
+                actual_query = ' '.join(parts).strip()
+                
+                if not actual_query:
+                    print(f"{Fore.RED}Please provide a query after 'query'{Style.RESET_ALL}")
+                    continue
+                
+                print(f"{Fore.CYAN}Searching for: '{actual_query}'...{Style.RESET_ALL}")
+                
+                try:
+                    results = searcher.query(
+                        actual_query,
+                        top_k=top_k,
+                        hybrid=hybrid,
+                        include_docs=include_docs
+                    )
+                    
+                    if not results:
+                        print(f"{Fore.YELLOW}No results found.{Style.RESET_ALL}")
+                        # Provide related suggestions
+                        print(f"{Fore.CYAN}Maybe try one of these related searches:{Style.RESET_ALL}")
+                        for i in range(min(3, len(suggestions))):
+                            print(f"  {Fore.MAGENTA}- {suggestions[i]}{Style.RESET_ALL}")
+                        print()
+                    else:
+                        print(f"{Fore.CYAN}Found {len(results)} results:{Style.RESET_ALL}")
+                        print()
+                        
+                        for i, (score, symbol_id, symbol_info) in enumerate(results, 1):
+                            path, name, kind, start_line, end_line, signature = symbol_info[:6]
+                            print(f"{Fore.GREEN}{i}. {Fore.BLUE}{name} {Fore.MAGENTA}({kind}) {Fore.RESET}in {Fore.CYAN}{path}:{start_line}-{end_line}{Style.RESET_ALL}")
+                            if signature:
+                                print(f"   {Fore.YELLOW}Signature: {Fore.WHITE}{signature}{Style.RESET_ALL}")
+                            print(f"   {Fore.CYAN}Score: {Fore.LIGHTYELLOW_EX}{score:.4f}{Style.RESET_ALL}")
+                            print()
+                except Exception as e:
+                    print(f"{Fore.RED}Search failed: {e}{Style.RESET_ALL}")
+            elif query:
+                # Treat as a simple query if it doesn't start with any command
+                print(f"{Fore.CYAN}Searching for: '{query}'...{Style.RESET_ALL}")
+                
+                try:
+                    results = searcher.query(query, top_k=5)
+                    
+                    if not results:
+                        print(f"{Fore.YELLOW}No results found.{Style.RESET_ALL}")
+                        # Provide related suggestions
+                        print(f"{Fore.CYAN}Maybe try one of these related searches:{Style.RESET_ALL}")
+                        for i in range(min(3, len(suggestions))):
+                            print(f"  {Fore.MAGENTA}- {suggestions[i]}{Style.RESET_ALL}")
+                        print()
+                    else:
+                        print(f"{Fore.CYAN}Found {len(results)} results:{Style.RESET_ALL}")
+                        print()
+                        
+                        for i, (score, symbol_id, symbol_info) in enumerate(results, 1):
+                            path, name, kind, start_line, end_line, signature = symbol_info[:6]
+                            print(f"{Fore.GREEN}{i}. {Fore.BLUE}{name} {Fore.MAGENTA}({kind}) {Fore.RESET}in {Fore.CYAN}{path}:{start_line}-{end_line}{Style.RESET_ALL}")
+                            if signature:
+                                print(f"   {Fore.YELLOW}Signature: {Fore.WHITE}{signature}{Style.RESET_ALL}")
+                            print(f"   {Fore.CYAN}Score: {Fore.LIGHTYELLOW_EX}{score:.4f}{Style.RESET_ALL}")
+                            print()
+                except Exception as e:
+                    print(f"{Fore.RED}Search failed: {e}{Style.RESET_ALL}")
+            else:
+                # Empty query, just continue the loop
+                continue
+                
+        except KeyboardInterrupt:
+            print(f"\n{Fore.YELLOW}Goodbye!{Style.RESET_ALL}")
+            break
+        except EOFError:
+            print(f"\n{Fore.YELLOW}Goodbye!{Style.RESET_ALL}")
+            break
 
 
 def main():

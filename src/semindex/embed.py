@@ -1,8 +1,85 @@
 import os
+import hashlib
 from typing import List
 import numpy as np
+import psutil
 
-DEFAULT_MODEL = os.environ.get("SEMINDEX_MODEL", "microsoft/codebert-base")
+from .cache import cache_manager
+from .config import get_config
+
+# Use configuration to get default model, fallback to environment variable or default
+def _get_default_model():
+    config = get_config()
+    model_from_config = config.get("MODELS.EMBEDDING_MODEL")
+    if model_from_config and model_from_config.strip():
+        return model_from_config
+    return os.environ.get("SEMINDEX_MODEL", "BAAI/bge-small-en-v1.5")  # Better performance and speed than codebert-base
+
+DEFAULT_MODEL = _get_default_model()
+
+
+def _get_optimal_batch_size(device: str, model_name: str, texts_count: int) -> int:
+    """Determine optimal batch size based on system resources and model characteristics.
+    
+    Args:
+        device: Device being used ('cpu', 'cuda', etc.)
+        model_name: Name of the model being used
+        texts_count: Number of texts to process
+        
+    Returns:
+        Optimal batch size for processing
+    """
+    try:
+        # Get system memory information
+        memory = psutil.virtual_memory()
+        available_memory_mb = memory.available / (1024 * 1024)
+        
+        # Base batch size based on device
+        if device == "cuda":
+            # For GPU, check CUDA memory if available
+            try:
+                import torch
+                if torch.cuda.is_available():
+                    gpu_memory_mb = torch.cuda.get_device_properties(0).total_memory / (1024 * 1024)
+                    # Use 80% of GPU memory to account for overhead
+                    available_memory_mb = min(available_memory_mb, gpu_memory_mb * 0.8)
+            except:
+                pass
+            
+            # GPU typically can handle larger batches
+            base_batch_size = 32
+        else:
+            # CPU batch sizing based on available memory
+            base_batch_size = 16
+            
+        # Adjust for model size (approximate)
+        if "large" in model_name.lower() or "3b" in model_name.lower() or "7b" in model_name.lower():
+            # Larger models need smaller batches
+            base_batch_size = max(1, base_batch_size // 2)
+        elif "small" in model_name.lower() or "mini" in model_name.lower() or "tiny" in model_name.lower():
+            # Smaller models can handle larger batches
+            base_batch_size = min(64, base_batch_size * 2)
+            
+        # Further adjust based on available memory
+        if available_memory_mb < 1024:  # Less than 1GB
+            base_batch_size = max(1, base_batch_size // 4)
+        elif available_memory_mb < 2048:  # Less than 2GB
+            base_batch_size = max(1, base_batch_size // 2)
+        elif available_memory_mb > 8192:  # More than 8GB
+            base_batch_size = min(128, base_batch_size * 2)
+            
+        # For very small text sets, use smaller batches to reduce overhead
+        if texts_count < 10:
+            base_batch_size = min(base_batch_size, 8)
+        elif texts_count < 100:
+            base_batch_size = min(base_batch_size, 32)
+            
+        # Ensure minimum batch size of 1
+        return max(1, int(base_batch_size))
+        
+    except Exception:
+        # Fallback to reasonable default
+        return 16
 
 
 class Embedder:
@@ -23,55 +100,97 @@ class Embedder:
         self.model = AutoModel.from_pretrained(model_name)
         self.model.to(self.device)
         self.model.eval()
+        
+        # Cache for this specific model instance
+        self.model_cache_key = f"embedder_{model_name}"
 
-    def encode(self, texts: List[str], batch_size: int = 16, max_length: int = 512) -> np.ndarray:
-        torch = self.torch
-        with torch.no_grad():
-            vecs = []
-            for i in range(0, len(texts), batch_size):
-                batch = texts[i : i + batch_size]
-                
-                # Add special tokens for code-specific models if needed
-                processed_batch = self._preprocess_texts(batch)
-                
-                tokens = self.tokenizer(
-                    processed_batch,
-                    padding=True,
-                    truncation=True,
-                    max_length=max_length,
-                    return_tensors="pt",
-                    # Use the pad token we set above
-                )
-                tokens = {k: v.to(self.device) for k, v in tokens.items()}
-                outputs = self.model(**tokens)
-                
-                # Use different pooling strategies based on the model
-                if self._is_sentence_transformer_model():
-                    # For sentence transformer style models, use CLS token or mean pooling
-                    last_hidden = outputs.last_hidden_state  # [B, T, H]
-                    # Use CLS token if available (first token), otherwise mean pooling
-                    if self._has_cls_pooling():
-                        emb = last_hidden[:, 0, :].cpu().numpy()  # Use CLS token
+    def encode(self, texts: List[str], batch_size: int = None, max_length: int = 512) -> np.ndarray:
+        """Encode texts to embeddings with adaptive batch sizing.
+        
+        If batch_size is None, automatically determines optimal batch size based on 
+        system resources and model characteristics.
+        """
+        # Automatically determine optimal batch size if not provided
+        if batch_size is None:
+            batch_size = _get_optimal_batch_size(self.device, self.model_name, len(texts))
+        
+        # Check for cached embeddings first
+        uncached_texts = []
+        uncached_indices = []
+        results = [None] * len(texts)
+        
+        for i, text in enumerate(texts):
+            cached_result = cache_manager.get_embedding(text)
+            if cached_result is not None:
+                results[i] = cached_result
+            else:
+                uncached_texts.append(text)
+                uncached_indices.append(i)
+        
+        # Process only uncached texts
+        if uncached_texts:
+            torch = self.torch
+            with torch.no_grad():
+                vecs = []
+                for i in range(0, len(uncached_texts), batch_size):
+                    batch = uncached_texts[i : i + batch_size]
+                    
+                    # Add special tokens for code-specific models if needed
+                    processed_batch = self._preprocess_texts(batch)
+                    
+                    tokens = self.tokenizer(
+                        processed_batch,
+                        padding=True,
+                        truncation=True,
+                        max_length=max_length,
+                        return_tensors="pt",
+                        # Use the pad token we set above
+                    )
+                    tokens = {k: v.to(self.device) for k, v in tokens.items()}
+                    outputs = self.model(**tokens)
+                    
+                    # Use different pooling strategies based on the model
+                    if self._is_sentence_transformer_model():
+                        # For sentence transformer style models, use CLS token or mean pooling
+                        last_hidden = outputs.last_hidden_state  # [B, T, H]
+                        # Use CLS token if available (first token), otherwise mean pooling
+                        if self._has_cls_pooling():
+                            emb = last_hidden[:, 0, :].cpu().numpy()  # Use CLS token
+                        else:
+                            # Apply attention mask for proper mean pooling
+                            mask = tokens["attention_mask"].unsqueeze(-1)  # [B, T, 1]
+                            summed = (last_hidden * mask).sum(dim=1)
+                            counts = mask.sum(dim=1).clamp(min=1)
+                            emb = (summed / counts).cpu().numpy()
                     else:
-                        # Apply attention mask for proper mean pooling
+                        # Default behavior for other models
+                        last_hidden = outputs.last_hidden_state  # [B, T, H]
                         mask = tokens["attention_mask"].unsqueeze(-1)  # [B, T, 1]
                         summed = (last_hidden * mask).sum(dim=1)
                         counts = mask.sum(dim=1).clamp(min=1)
                         emb = (summed / counts).cpu().numpy()
-                else:
-                    # Default behavior for other models
-                    last_hidden = outputs.last_hidden_state  # [B, T, H]
-                    mask = tokens["attention_mask"].unsqueeze(-1)  # [B, T, 1]
-                    summed = (last_hidden * mask).sum(dim=1)
-                    counts = mask.sum(dim=1).clamp(min=1)
-                    emb = (summed / counts).cpu().numpy()
-                
-                # L2 normalize for cosine with IndexFlatIP
-                emb = emb / (np.linalg.norm(emb, axis=1, keepdims=True) + 1e-12)
-                vecs.append(emb)
+                    
+                    # L2 normalize for cosine with IndexFlatIP
+                    emb = emb / (np.linalg.norm(emb, axis=1, keepdims=True) + 1e-12)
+                    vecs.append(emb)
+            
+            uncached_results = (
+                np.vstack(vecs)
+                if vecs
+                else np.zeros((0, getattr(self.model.config, "hidden_size", 768)), dtype=np.float32)
+            )
+            
+            # Cache the results and update results array
+            if len(uncached_results) > 0:
+                for idx, result in zip(uncached_indices, uncached_results):
+                    results[idx] = result
+                    # Cache the individual result
+                    cache_manager.cache_embedding(texts[idx], result)
+
+        # Stack and return all results
         return (
-            np.vstack(vecs)
-            if vecs
+            np.vstack(results)
+            if results and any(r is not None for r in results)
             else np.zeros((0, getattr(self.model.config, "hidden_size", 768)), dtype=np.float32)
         )
 

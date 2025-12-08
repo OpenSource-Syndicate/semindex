@@ -207,7 +207,8 @@ def index_docs(index_dir: str, repo_root: str, embedder: Optional[Embedder] = No
             if not text or len(text) < 200:
                 continue
             checksum = _sha256_bytes(content)
-            url = f"file://{os.path.join(doc_dir, rel).replace('\\', '/')}"
+            path_formatted = os.path.join(doc_dir, rel).replace('\\', '/')
+            url = f"file://{path_formatted}"
             page_rows.append((pkg, version, url, title, checksum, time.time()))
             texts.append(text)
             count += 1

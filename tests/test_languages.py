@@ -120,3 +120,30 @@ def test_ensure_default_adapters_registers_tree_sitter_languages(monkeypatch):
     assert "python" in adapters
     assert adapters["java"].file_extensions == (".java",)
     assert adapters["rust"].file_extensions == (".rs",)
+
+
+def test_collect_index_targets_with_language_filter(tmp_path: Path):
+    # Create test files
+    (tmp_path / "test.py").write_text("def hello(): pass", encoding="utf-8")
+    (tmp_path / "test.js").write_text("function hello() { }", encoding="utf-8")
+    (tmp_path / "test.java").write_text("public class Hello { }", encoding="utf-8")
+    
+    # Test with 'auto' - should find all supported files
+    targets_auto = collect_index_targets(str(tmp_path), "auto")
+    assert len(targets_auto) >= 1  # At least python file
+    
+    # Test with specific language - should find only matching files
+    targets_python = collect_index_targets(str(tmp_path), "python")
+    assert any(adapter.name == "python" for adapter, path in targets_python)
+    python_paths = [path for adapter, path in targets_python if adapter.name == "python"]
+    assert any("test.py" in path for path in python_paths)
+
+
+def test_adapter_availability_and_registration():
+    clear_adapters()
+    ensure_default_adapters()
+    
+    adapters = list(available_adapters())
+    # Should always have at least the Python adapter
+    assert len(adapters) >= 1
+    assert any(adapter.name == "python" for adapter in adapters)

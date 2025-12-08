@@ -26,13 +26,15 @@ The final phase focuses on refining the user experience, improving performance, 
 - **Week 29-30: Query Command Implementation** ✅ - `cmd_query()` CLI function implemented with hybrid search and documentation merging support
 - **Week 31-32: Index-Driven Planning** ✅ - Autoplan refactored to generate sections dynamically from indexed codebase (key modules, classes, functions, patterns)
 - **Week 33+: Performance Benchmarking and Fine-Tuning** ❌ - Not yet implemented
+- **Week 33+: Performance Enhancements for Large Codebases** ✅ - Added memory-mapped vector storage, adaptive batch sizing, and distributed processing for large codebases
+- **Week 33+: Scalability Improvements** ✅ - Implemented parallel processing optimizations and intelligent caching systems
 
 ## Current roadmap Items
 
 - [x] Better code embeddings (code-specific model) - Improved support for code-specific models added. Recommended models include `microsoft/codebert-base`, `Salesforce/codet5-base`, and `BAAI/bge-large-en-v1.5`
 - [x] External docs indexing and retrieval (PyPI/local) with merged ranking
 - [x] Public Python API wrappers (Indexer, Searcher) for programmatic indexing and querying
-- [ ] Who-calls/used-by graph exploration
+- [x] Who-calls/used-by graph exploration - Implemented with `--callers` and `--callees` options in the `graph` command
 - [x] Reranking with keyword + structure signals (via Reciprocal Rank Fusion)
 - [x] Keyword search integration
 - [x] Graph search integration
@@ -40,6 +42,35 @@ The final phase focuses on refining the user experience, improving performance, 
 - [x] Advanced semantic chunking (CAST algorithm)
 - [x] Documentation generation pipeline (LLM-backed auto planning + Mermaid exports)
 - [x] Language adapter registry *(auto-registration + optional Tree-sitter JavaScript adapter)*
+- [x] AI-powered commands for code understanding and generation - Added `ai` command with subcommands for chat, explain, suggest, generate, docs, bugs, refactor, and tests
+- [x] Call graph analysis - Implemented through the graph command with `--callers` and `--callees` options
+- [x] AI-powered project planning - Added `ai-plan` command with subcommands for create, execute, and manage complex software projects
+- [x] Perplexica-powered search capabilities - Added `perplexica` command with search and explain subcommands and various focus modes
+- [x] Configuration system with TOML-based config file
+- [x] Enhanced contextual code generation with multi-modal context (documentation, types, structure) - Added `ai generate-context` command with rich context awareness
+- [x] Intent recognition and task decomposition for better code generation
+- [x] Pattern-based generation using templates from your own codebase
+- [x] Execution-guided generation with validation and refinement
+- [x] Interactive refinement capabilities with conversation-based feedback
+- [x] Real-time context updates with file watching system
+- [x] Performance optimizations with model caching, batch processing, and vector storage improvements
+- [x] Parallel processing for file indexing with thread pool execution
+- [x] Database indexing for faster query performance
+- [x] Optimized embedding computation with caching and batch processing
+- [x] Improved models for better code understanding (BGE embeddings, Phi-3 LLM)
+- [x] Configuration system for performance tuning and model selection
+- [x] Optimized similarity calculations in semantic chunking
+- [x] Memory-mapped vector storage for large indexes
+- [x] Adaptive batch sizing based on available resources
+- [x] Distributed processing for very large codebases
+- [x] Comprehensive caching system with LRU eviction and TTL support
+- [x] Model caching to eliminate redundant model loading overhead
+- [x] Fixed language_name scoping issue in parallel processing
 - [ ] Language injection support *(extended symbol extraction for remaining languages, UI integrations pending)*
 - [ ] Web/GUI interface
 - [ ] Performance benchmarking
+- [ ] Enhanced visualization tools for code analysis
+- [ ] IDE integration plugins (VSCode, Vim, etc.)
+- [ ] Real-time indexing as files change
+- [ ] LSP (Language Server Protocol) integration for editor support
+- [ ] LSP (Language Server Protocol) integration for editor support

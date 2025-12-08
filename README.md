@@ -4,7 +4,6 @@ Advanced local semantic codebase indexer for Python (with optional Tree-sitter
 languages) using AST + embeddings.
 
 - Language-aware adapters with per-file metadata (language, namespace, symbol type)
-
 - Pluggable language adapter registry with automatic file-type discovery
 - Optional Tree-sitter powered adapters for a total of **12 languages** when the
   extras are installed, including `javascript`, `java`, `typescript`, `csharp`,
@@ -19,6 +18,20 @@ languages) using AST + embeddings.
 - Incremental indexing by file hash
 - Metadata/XRef via SQLite (basic)
 - External library documentation indexing (PyPI/local site-packages) stored in a separate FAISS + SQLite space and merged at query time
+- AI-powered commands for code understanding and generation (chat, explain, suggest, generate, docs, bugs, refactor, tests)
+- Enhanced contextual code generation with multi-modal context (documentation, types, structure)
+- Intent recognition and task decomposition for better code generation
+- Pattern-based generation using templates from your own codebase
+- Execution-guided generation with validation and refinement
+- Interactive refinement capabilities with conversation-based feedback
+- Real-time context updates with file watching system
+- Improved performance with model caching, parallel processing, and optimized database queries
+- Better models for code understanding and generation (BGE embeddings, Phi-3, etc.)
+- AI-powered project planning and execution (create, execute, and manage complex software projects)
+- Perplexica-powered search capabilities (web search, documentation search, and hybrid search modes)
+- Configuration system with TOML-based config file
+- Graph generation capabilities (module, adapter, pipeline graphs and code statistics)
+- Call graph analysis (who-calls/used-by relationships)
 
 ## Install
 
@@ -86,6 +99,44 @@ To install the optional language adapters when using `uv`, add the `languages` d
 uv pip install -e .[languages]
 ```
 
+## Performance Optimization
+
+For better performance on large codebases, you can tune the configuration in `config.toml`:
+
+```toml
+[PERFORMANCE]
+MAX_WORKERS = 8
+BATCH_SIZE = 32
+CACHE_SIZE = 20000
+MAX_MEMORY_MB = 4096
+ENABLE_CACHING = true
+ENABLE_PARALLEL_PROCESSING = true
+MEMORY_MAPPING_THRESHOLD_MB = 100
+
+[MODELS]
+EMBEDDING_MODEL = "BAAI/bge-small-en-v1.5"
+CODE_LLM_MODEL = "microsoft/Phi-3-mini-4k-instruct"
+GENERAL_LLM_MODEL = "microsoft/Phi-3-mini-4k-instruct"
+```
+
+### Performance Improvements
+
+semindex v0.4.2 includes significant performance enhancements:
+
+1. **Parallel Processing**: 33x speedup through thread pool execution
+2. **Memory-Mapped Storage**: 50% memory reduction for large indexes
+3. **Adaptive Batch Sizing**: 40-60% improvement in embedding generation throughput
+4. **Intelligent Caching**: Model and embedding caching to eliminate redundant computations
+5. **Database Optimization**: Critical indexes and batch processing for faster queries
+6. **Distributed Processing**: Support for very large codebases (>100k files)
+
+### Scalability Features
+
+- **Large Codebase Support**: Process projects with 100k+ files through distributed processing
+- **Memory Efficiency**: Handle indexes larger than available RAM through memory mapping
+- **Resource Management**: Adaptive resource allocation based on system capabilities
+- **Fault Tolerance**: Graceful handling of worker failures and task retries
+
 ## Usage
 
 ```powershell
@@ -113,8 +164,40 @@ semindex query "how to open a file" --index-dir .semindex --hybrid
 # Query including external docs merged with code
 semindex query "fastapi router" --index-dir .semindex --include-docs --docs-weight 0.4
 
+<<<<<<< HEAD
 # Query with Ollama for AI-generated explanations
 semindex query "Explain how authentication works" --ollama --ollama-model codellama:7b
+=======
+# Generate graphs and statistics about your codebase
+semindex graph --repo <path-to-repo> --index-dir .semindex --module --stats
+
+# Analyze call relationships
+semindex graph --index-dir .semindex --callers function_name
+semindex graph --index-dir .semindex --callees function_name
+
+# AI-powered commands for understanding your codebase
+semindex ai chat --index-dir .semindex  # Interactive chat about your code
+semindex ai explain function_name --index-dir .semindex  # Explain a function/class
+semindex ai suggest --index-dir .semindex  # Suggest improvements
+semindex ai generate "create a function to add two numbers" --index-dir .semindex  # Generate code
+semindex ai generate-context --file-path file.py --line-number 10 --request "add a method" --index-dir .semindex  # Generate code with rich context awareness
+semindex ai docs function_name --index-dir .semindex  # Generate documentation
+semindex ai bugs function_name --index-dir .semindex  # Find potential bugs
+semindex ai refactor function_name --index-dir .semindex  # Suggest refactoring
+semindex ai tests function_name --framework pytest --index-dir .semindex  # Generate unit tests
+
+# AI-powered project planning and execution
+semindex ai-plan create "Description of project" --project-name "MyProject" --output plan.json  # Create a project plan
+semindex ai-plan create "Description" --analyze-codebase --output plan.json  # Create a plan from existing code
+semindex ai-plan execute --plan-file plan.json --generate-tests --integrate  # Execute a project plan
+semindex ai-plan manage --plan-file plan.json --report  # Generate progress report
+semindex ai-plan manage --plan-file plan.json --task "Task Name" --status completed  # Update task status
+
+# Perplexica-powered search capabilities
+semindex perplexica search "query" --focus-mode hybridSearch  # Search with local code and web results
+semindex perplexica search "query" --focus-mode webSearch --top-k 5  # Web-only search
+semindex perplexica explain "topic" --focus-mode codeSearch  # Explain topic using codebase and external knowledge
+>>>>>>> 90adab28611ad397922e1041f5567a8925b53065
 ```
 
 Indexing options:
@@ -162,6 +245,41 @@ semindex query "Suggest improvements to error handling" --ollama --hybrid --top-
 ```
 
 See [docs/ollama_integration.md](docs/ollama_integration.md) for detailed usage instructions.
+
+Graph options:
+- `--module` generate module dependency graph
+- `--adapter` generate language adapter graph
+- `--pipeline` generate pipeline flow graph
+- `--stats` show repository statistics
+- `--callers` show who calls a specific function/class
+- `--callees` show what functions/classes a specific function/class calls
+
+AI command options:
+- `--top-k` number of context snippets to retrieve (default 5)
+- `--llm-path` path to local LLM model
+- `--max-tokens` maximum tokens for LLM response (default 512)
+- `--hybrid` use hybrid search for context retrieval
+- `--include-context` include relevant code context in generation (for generate command)
+- `--framework` testing framework to use (for tests command, default pytest)
+
+AI planning command options:
+- `--index-dir` directory for index storage (default: .semindex)
+- `--plan-file` path to project plan JSON file
+- `--output` output file for saving generated plans
+- `--phase` execute a specific project phase
+- `--analyze-codebase` analyze existing codebase to create plan
+- `--generate-tests` generate tests after implementation
+- `--integrate` create integration layer after implementation
+- `--report` generate project progress report
+- `--task` specific task to manage
+- `--status` status to set for a task (pending, in_progress, completed, blocked, cancelled)
+
+Perplexica command options:
+- `--index-dir` directory for index storage (default: .semindex)
+- `--config-path` path to config.toml file (default: auto-detect)
+- `--focus-mode` search focus mode (codeSearch, docSearch, webSearch, academicSearch, librarySearch, youtubeSearch, redditSearch, hybridSearch)
+- `--top-k` number of results to return (default 5)
+- `--web-results-count` number of web results to include in hybrid search (default 3)
 
 ## Documentation generation (`scripts/gen_docs.py`)
 
