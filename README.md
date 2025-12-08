@@ -14,7 +14,7 @@ languages) using AST + embeddings.
 - Keyword search via Elasticsearch
 - Hybrid search with Reciprocal Rank Fusion
 - Advanced semantic-aware chunking with CAST algorithm
-- Automated technical documentation generator with local or remote LLM backends
+- Automated technical documentation generator with local, remote, and Ollama LLM backends
 - Incremental indexing by file hash
 - Metadata/XRef via SQLite (basic)
 - External library documentation indexing (PyPI/local site-packages) stored in a separate FAISS + SQLite space and merged at query time
@@ -164,6 +164,9 @@ semindex query "how to open a file" --index-dir .semindex --hybrid
 # Query including external docs merged with code
 semindex query "fastapi router" --index-dir .semindex --include-docs --docs-weight 0.4
 
+# Query with Ollama for AI-generated explanations
+semindex query "Explain how authentication works" --ollama --ollama-model codellama:7b
+
 # Generate graphs and statistics about your codebase
 semindex graph --repo <path-to-repo> --index-dir .semindex --module --stats
 
@@ -213,6 +216,68 @@ Query options:
 - `--top-k` number of results to return (default 10)
 - `--include-docs` include external library docs results
 - `--docs-weight` weight (0-1) applied when merging docs vs code results (default 0.4)
+- `--ollama` use Ollama for AI-generated responses with context
+- `--ollama-model` specify which Ollama model to use (default: llama3)
+- `--max-tokens` maximum tokens for Ollama response (default: 512)
+
+## Ollama Integration
+
+Semindex now supports Ollama for enhanced AI-powered code understanding. This allows leveraging GPU-accelerated models for more sophisticated code analysis and explanation.
+
+### Prerequisites
+
+1. Install and run [Ollama](https://ollama.ai)
+2. Pull a model you'd like to use: `ollama pull codellama:7b`
+
+### Example Usage
+
+```powershell
+# Get AI explanation of code with context
+semindex query "How does the database connection pooling work?" --ollama
+
+# Use a specific model for code understanding
+semindex query "Show me all authentication functions" --ollama --ollama-model codellama:7b
+
+# Combine with other features
+semindex query "Suggest improvements to error handling" --ollama --hybrid --top-k 5
+```
+
+See [docs/ollama_integration.md](docs/ollama_integration.md) for detailed usage instructions.
+
+Graph options:
+- `--module` generate module dependency graph
+- `--adapter` generate language adapter graph
+- `--pipeline` generate pipeline flow graph
+- `--stats` show repository statistics
+- `--callers` show who calls a specific function/class
+- `--callees` show what functions/classes a specific function/class calls
+
+AI command options:
+- `--top-k` number of context snippets to retrieve (default 5)
+- `--llm-path` path to local LLM model
+- `--max-tokens` maximum tokens for LLM response (default 512)
+- `--hybrid` use hybrid search for context retrieval
+- `--include-context` include relevant code context in generation (for generate command)
+- `--framework` testing framework to use (for tests command, default pytest)
+
+AI planning command options:
+- `--index-dir` directory for index storage (default: .semindex)
+- `--plan-file` path to project plan JSON file
+- `--output` output file for saving generated plans
+- `--phase` execute a specific project phase
+- `--analyze-codebase` analyze existing codebase to create plan
+- `--generate-tests` generate tests after implementation
+- `--integrate` create integration layer after implementation
+- `--report` generate project progress report
+- `--task` specific task to manage
+- `--status` status to set for a task (pending, in_progress, completed, blocked, cancelled)
+
+Perplexica command options:
+- `--index-dir` directory for index storage (default: .semindex)
+- `--config-path` path to config.toml file (default: auto-detect)
+- `--focus-mode` search focus mode (codeSearch, docSearch, webSearch, academicSearch, librarySearch, youtubeSearch, redditSearch, hybridSearch)
+- `--top-k` number of results to return (default 5)
+- `--web-results-count` number of web results to include in hybrid search (default 3)
 
 Graph options:
 - `--module` generate module dependency graph
@@ -258,7 +323,8 @@ Perplexica command options:
   - **Index-discovered sections**: Key modules, key classes, key functions, architectural patterns
   - Dynamically queries the indexed codebase to identify critical components and patterns
 - **Graph builders**: `build_pipeline_graph()`, `build_module_graph()`, and `build_adapter_graph()` emit diagrams stored alongside generated docs.
-- **LLM flexibility**: `LocalLLM` auto-downloads a TinyLlama GGUF model (override with `SEMINDEX_LLM_PATH`) while `OpenAICompatibleLLM` supports Groq/OpenAI-compatible endpoints via `SEMINDEX_REMOTE_API_KEY`, `SEMINDEX_REMOTE_API_BASE`, and `SEMINDEX_REMOTE_MODEL`.
+- **LLM flexibility**: `LocalLLM` auto-downloads a TinyLlama GGUF model (override with `SEMINDEX_LLM_PATH`), `OpenAICompatibleLLM` supports Groq/OpenAI-compatible endpoints via `SEMINDEX_REMOTE_API_KEY`, `SEMINDEX_REMOTE_API_BASE`, and `SEMINDEX_REMOTE_MODEL`, and `OllamaLLM` enables GPU-accelerated local models via Ollama.
+- **Environment variables**: `SEMINDEX_OLLAMA_MODEL` and `SEMINDEX_OLLAMA_BASE_URL` for Ollama configuration.
 
 ### Running with a local model
 
