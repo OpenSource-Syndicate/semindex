@@ -164,10 +164,9 @@ semindex query "how to open a file" --index-dir .semindex --hybrid
 # Query including external docs merged with code
 semindex query "fastapi router" --index-dir .semindex --include-docs --docs-weight 0.4
 
-<<<<<<< HEAD
 # Query with Ollama for AI-generated explanations
 semindex query "Explain how authentication works" --ollama --ollama-model codellama:7b
-=======
+
 # Generate graphs and statistics about your codebase
 semindex graph --repo <path-to-repo> --index-dir .semindex --module --stats
 
@@ -197,7 +196,6 @@ semindex ai-plan manage --plan-file plan.json --task "Task Name" --status comple
 semindex perplexica search "query" --focus-mode hybridSearch  # Search with local code and web results
 semindex perplexica search "query" --focus-mode webSearch --top-k 5  # Web-only search
 semindex perplexica explain "topic" --focus-mode codeSearch  # Explain topic using codebase and external knowledge
->>>>>>> 90adab28611ad397922e1041f5567a8925b53065
 ```
 
 Indexing options:
@@ -245,6 +243,41 @@ semindex query "Suggest improvements to error handling" --ollama --hybrid --top-
 ```
 
 See [docs/ollama_integration.md](docs/ollama_integration.md) for detailed usage instructions.
+
+Graph options:
+- `--module` generate module dependency graph
+- `--adapter` generate language adapter graph
+- `--pipeline` generate pipeline flow graph
+- `--stats` show repository statistics
+- `--callers` show who calls a specific function/class
+- `--callees` show what functions/classes a specific function/class calls
+
+AI command options:
+- `--top-k` number of context snippets to retrieve (default 5)
+- `--llm-path` path to local LLM model
+- `--max-tokens` maximum tokens for LLM response (default 512)
+- `--hybrid` use hybrid search for context retrieval
+- `--include-context` include relevant code context in generation (for generate command)
+- `--framework` testing framework to use (for tests command, default pytest)
+
+AI planning command options:
+- `--index-dir` directory for index storage (default: .semindex)
+- `--plan-file` path to project plan JSON file
+- `--output` output file for saving generated plans
+- `--phase` execute a specific project phase
+- `--analyze-codebase` analyze existing codebase to create plan
+- `--generate-tests` generate tests after implementation
+- `--integrate` create integration layer after implementation
+- `--report` generate project progress report
+- `--task` specific task to manage
+- `--status` status to set for a task (pending, in_progress, completed, blocked, cancelled)
+
+Perplexica command options:
+- `--index-dir` directory for index storage (default: .semindex)
+- `--config-path` path to config.toml file (default: auto-detect)
+- `--focus-mode` search focus mode (codeSearch, docSearch, webSearch, academicSearch, librarySearch, youtubeSearch, redditSearch, hybridSearch)
+- `--top-k` number of results to return (default 5)
+- `--web-results-count` number of web results to include in hybrid search (default 3)
 
 Graph options:
 - `--module` generate module dependency graph

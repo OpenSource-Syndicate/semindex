@@ -373,11 +373,6 @@ def cmd_query(args: argparse.Namespace):
             merged.sort(key=lambda x: x[0], reverse=True)
             merged = merged[:args.top_k]
             results = [r for _score, (_rtype, r) in merged]
-<<<<<<< HEAD
-
-    if not results and not args.ollama:
-        print("No results found.")
-        return
 
     # If Ollama is requested, use it to generate a more detailed response
     if args.ollama:
@@ -432,33 +427,16 @@ def cmd_query(args: argparse.Namespace):
     else:
         # Regular search results without Ollama
         if results:
-            print(f"Found {len(results)} results for query: '{args.query}'")
+            print(f"{Fore.CYAN}Found {len(results)} results for query: '{args.query}'{Style.RESET_ALL}")
             print()
 
             for i, (score, symbol_id, symbol_info) in enumerate(results, 1):
                 path, name, kind, start_line, end_line, signature = symbol_info[:6]
-                print(f"{i}. {name} ({kind}) in {path}:{start_line}-{end_line}")
+                print(f"{Fore.GREEN}{i}. {Fore.BLUE}{name} {Fore.MAGENTA}({kind}) {Fore.RESET}in {Fore.CYAN}{path}:{start_line}-{end_line}{Style.RESET_ALL}")
                 if signature:
-                    print(f"   Signature: {signature}")
-                print(f"   Score: {score:.4f}")
+                    print(f"   {Fore.YELLOW}Signature: {Fore.WHITE}{signature}{Style.RESET_ALL}")
+                print(f"   {Fore.CYAN}Score: {Fore.LIGHTYELLOW_EX}{score:.4f}{Style.RESET_ALL}")
                 print()
-=======
-    
-    if not results:
-        print(f"{Fore.YELLOW}No results found.{Style.RESET_ALL}")
-        return
-    
-    print(f"{Fore.CYAN}Found {len(results)} results for query: '{args.query}'{Style.RESET_ALL}")
-    print()
-    
-    for i, (score, symbol_id, symbol_info) in enumerate(results, 1):
-        path, name, kind, start_line, end_line, signature = symbol_info[:6]
-        print(f"{Fore.GREEN}{i}. {Fore.BLUE}{name} {Fore.MAGENTA}({kind}) {Fore.RESET}in {Fore.CYAN}{path}:{start_line}-{end_line}{Style.RESET_ALL}")
-        if signature:
-            print(f"   {Fore.YELLOW}Signature: {Fore.WHITE}{signature}{Style.RESET_ALL}")
-        print(f"   {Fore.CYAN}Score: {Fore.LIGHTYELLOW_EX}{score:.4f}{Style.RESET_ALL}")
-        print()
->>>>>>> 90adab28611ad397922e1041f5567a8925b53065
 
 
 def cmd_graph(args: argparse.Namespace) -> int:
