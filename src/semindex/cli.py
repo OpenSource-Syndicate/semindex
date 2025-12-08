@@ -305,12 +305,12 @@ def cmd_index(args: argparse.Namespace):
 def cmd_query(args: argparse.Namespace):
     """Query the semantic index."""
     from .search import search_similar
-    
+
     index_dir = os.path.abspath(args.index_dir)
-    
+
     embedder = Embedder(model_name=args.model)
     qvec = embedder.encode([args.query])
-    
+
     # Perform search
     try:
         if args.hybrid:
@@ -321,7 +321,7 @@ def cmd_query(args: argparse.Namespace):
     except Exception as e:
         print(f"Search failed: {e}")
         return
-    
+
     # Handle docs retrieval if requested
     if args.include_docs:
         try:
@@ -329,7 +329,7 @@ def cmd_query(args: argparse.Namespace):
             doc_results = search_docs(index_dir, qvec, top_k=args.top_k)
         except Exception:
             doc_results = []
-        
+
         if doc_results:
             # Merge code + docs with weighted normalization
             merged = []
@@ -344,21 +344,74 @@ def cmd_query(args: argparse.Namespace):
             merged.sort(key=lambda x: x[0], reverse=True)
             merged = merged[:args.top_k]
             results = [r for _score, (_rtype, r) in merged]
-    
-    if not results:
+
+    if not results and not args.ollama:
         print("No results found.")
         return
-    
-    print(f"Found {len(results)} results for query: '{args.query}'")
-    print()
-    
-    for i, (score, symbol_id, symbol_info) in enumerate(results, 1):
-        path, name, kind, start_line, end_line, signature = symbol_info[:6]
-        print(f"{i}. {name} ({kind}) in {path}:{start_line}-{end_line}")
-        if signature:
-            print(f"   Signature: {signature}")
-        print(f"   Score: {score:.4f}")
-        print()
+
+    # If Ollama is requested, use it to generate a more detailed response
+    if args.ollama:
+        try:
+            from .rag import generate_answer_ollama
+            answer = generate_answer_ollama(
+                index_dir=index_dir,
+                query=args.query,
+                top_k=args.top_k,
+                embed_model=args.model,
+                ollama_model=args.ollama_model,
+                max_tokens=args.max_tokens
+            )
+            print(f"Query: {args.query}")
+            print(f"Ollama Response:\n{answer}")
+
+            if results:
+                print(f"\nRelevant code results ({len(results)}):")
+                for i, (score, symbol_id, symbol_info) in enumerate(results, 1):
+                    path, name, kind, start_line, end_line, signature = symbol_info[:6]
+                    print(f"  {i}. {name} ({kind}) in {path}:{start_line}-{end_line}")
+                    if signature:
+                        print(f"     Signature: {signature}")
+                    print(f"     Score: {score:.4f}")
+                    print()
+        except ImportError:
+            print("[WARN] Ollama module not available. Install ollama to use Ollama features.")
+            # Fallback to regular search results
+            if results:
+                print(f"Found {len(results)} results for query: '{args.query}'")
+                print()
+                for i, (score, symbol_id, symbol_info) in enumerate(results, 1):
+                    path, name, kind, start_line, end_line, signature = symbol_info[:6]
+                    print(f"{i}. {name} ({kind}) in {path}:{start_line}-{end_line}")
+                    if signature:
+                        print(f"   Signature: {signature}")
+                    print(f"   Score: {score:.4f}")
+                    print()
+        except Exception as e:
+            print(f"[ERROR] Ollama generation failed: {e}")
+            # Fallback to regular search results
+            if results:
+                print(f"Found {len(results)} results for query: '{args.query}'")
+                print()
+                for i, (score, symbol_id, symbol_info) in enumerate(results, 1):
+                    path, name, kind, start_line, end_line, signature = symbol_info[:6]
+                    print(f"{i}. {name} ({kind}) in {path}:{start_line}-{end_line}")
+                    if signature:
+                        print(f"   Signature: {signature}")
+                    print(f"   Score: {score:.4f}")
+                    print()
+    else:
+        # Regular search results without Ollama
+        if results:
+            print(f"Found {len(results)} results for query: '{args.query}'")
+            print()
+
+            for i, (score, symbol_id, symbol_info) in enumerate(results, 1):
+                path, name, kind, start_line, end_line, signature = symbol_info[:6]
+                print(f"{i}. {name} ({kind}) in {path}:{start_line}-{end_line}")
+                if signature:
+                    print(f"   Signature: {signature}")
+                print(f"   Score: {score:.4f}")
+                print()
 
 
 def cmd_graph(args: argparse.Namespace) -> int:
@@ -484,6 +537,10 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p_q.add_argument("--hybrid", action="store_true", help="Use hybrid search (combines vector and keyword search)")
     p_q.add_argument("--include-docs", action="store_true", help="Include external docs in retrieval")
     p_q.add_argument("--docs-weight", type=float, default=0.4, help="Relative weight for docs vs code results (0-1)")
+    p_q.add_argument("--ollama", action="store_true", help="Use Ollama to generate detailed responses with context")
+    p_q.add_argument("--ollama-model", default=os.environ.get("SEMINDEX_OLLAMA_MODEL", "llama3"),
+                     help="Ollama model to use for generation (default: llama3)")
+    p_q.add_argument("--max-tokens", type=int, default=512, help="Maximum tokens for Ollama response")
     p_q.set_defaults(func=cmd_query)
 
     p_graph = sub.add_parser("graph", help="Generate graphs (Mermaid, metadata)")

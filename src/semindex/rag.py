@@ -124,3 +124,52 @@ def generate_answer_remote(
         max_tokens=max_tokens,
         stop=stop,
     )
+
+
+def generate_answer_ollama(
+    index_dir: str,
+    query: str,
+    top_k: int = 8,
+    hybrid: bool = False,
+    embed_model: str | None = None,
+    ollama_model: str | None = None,
+    max_tokens: int = 512,
+    base_url: str | None = None,
+    temperature: float = 0.2,
+) -> str:
+    """Generate an answer using a local Ollama LLM with retrieved context."""
+
+    # Import here to avoid requiring ollama when not needed
+    try:
+        from .ollama_llm import OllamaLLM, OllamaError
+    except ImportError:
+        raise ImportError("Ollama module not available. Install ollama to use Ollama features.")
+
+    # Retrieve context
+    snippets = retrieve_context(index_dir, query, top_k=top_k, hybrid=hybrid, embed_model=embed_model)
+    # Order by score desc and take text only
+    snippets_sorted = [s for _score, s in sorted(snippets, key=lambda x: x[0], reverse=True)]
+
+    system_prompt = (
+        "You are an expert code assistant. Answer accurately using the provided code/documentation snippets. "
+        "Cite file paths inline where relevant. If uncertain, say so. "
+        "Provide detailed explanations and examples when helpful."
+    )
+
+    try:
+        llm = OllamaLLM(
+            model=ollama_model,
+            base_url=base_url,
+            temperature=temperature,
+            max_tokens=max_tokens
+        )
+        answer = llm.generate(
+            system_prompt=system_prompt,
+            user_prompt=query,
+            context_chunks=snippets_sorted,
+        )
+        return answer
+    except OllamaError as e:
+        raise e
+    except ImportError:
+        raise ImportError("Ollama module not available. Install ollama to use Ollama features.")

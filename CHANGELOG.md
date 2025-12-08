@@ -1,8 +1,16 @@
 # Changelog
 
-## [Unreleased]
+## [0.5.0] - 2025-12-08
 
 ### Added
+- Implemented Ollama integration for AI-powered code explanations with GPU acceleration
+  - New `ollama_llm.py` module with `OllamaLLM` class for communication with local Ollama service
+  - Added `--ollama` flag to enable Ollama-enhanced query responses
+  - Added `--ollama-model` parameter to specify which Ollama model to use (default: llama3)
+  - Added `--max-tokens` parameter to control response length
+  - New `generate_answer_ollama()` function in `rag.py` for Ollama-based RAG responses
+  - Comprehensive documentation in `docs/ollama_integration.md`
+  - Full test suite for Ollama integration in `tests/test_ollama.py`, `tests/test_rag_ollama.py`, and `tests/test_cli_ollama.py`
 - Implemented `cmd_query()` CLI function for semantic search with support for hybrid search and documentation merging
 - Enhanced autoplan with index-driven section discovery:
   - `_discover_key_modules()`: Identifies core modules by symbol count
@@ -16,12 +24,28 @@
 - Autoplan now generates documentation sections dynamically from indexed codebase rather than hardcoded templates
 - `generate_plan()` accepts optional `index_dir` parameter to enable index-based discovery
 - Improved code organization with separation of concerns in planning logic
-- README.md updated to reflect index-driven documentation planning
+- README.md updated to reflect index-driven documentation planning and Ollama integration
+- CLI argument parser enhanced with new Ollama-specific options
 
 ### Fixed
 - Fixed missing `cmd_query` function that was causing NameError in CLI
 - Added missing imports (`json`, `sqlite3`) to cli.py
 - Fixed unpacking error in query result formatting (6 fields instead of 7)
+
+## [0.4.0] - 2025-11-15
+
+### Added
+- External library documentation indexing (PyPI + local site-packages)
+- New public Python wrappers: `Indexer` and `Searcher` for programmatic indexing and querying
+- New `semindex.docs` package with automated documentation generation
+- Added `scripts/gen_docs.py` for generating wiki documentation
+- Implemented `LocalLLM` with automatic model download for offline documentation generation
+- Added `OpenAICompatibleLLM` for remote LLM integration
+
+### Changed
+- Extended `store.py` schema to manage docs-specific tables and FAISS index
+- `cli.py` updated to support docs indexing and retrieval
+- Improved error handling for external service failures
 
 ## [0.3.0] - 2025-10-20
 
